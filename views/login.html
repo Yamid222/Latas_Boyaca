@@ -1,0 +1,24 @@
+<div class="login-screen" id="loginScreen" aria-hidden="false">
+    <div class="login-card">
+      <div class="login-brand">
+        <div class="login-logo">LB</div>
+        <div>
+          <h1>Latas Boyacá</h1>
+        </div>
+      </div>
+      <p class="subtitle">Ingresa a tu panel administrativo (simulación).</p>
+      <p class="login-error" id="loginError" role="alert" hidden></p>
+      <form id="loginForm" novalidate>
+        <div class="field">
+          <label for="email">Correo electrónico</label>
+          <input type="email" id="email" name="email" placeholder="admin@latasboyaca.com" autocomplete="username">
+        </div>
+        <div class="field">
+          <label for="password">Contraseña</label>
+          <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary">Iniciar sesión</button>
+      </form>
+      <p class="login-hint">Credenciales demo: admin@latasboyaca.com · Contraseña: admin123</p>
+    </div>
+  </div>
