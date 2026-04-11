@@ -54,7 +54,20 @@ body {
 }
 
 /* ——— Login ——— */
+/* El login siempre usa tema claro aunque el panel esté en oscuro */
 .login-screen {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #eef1f6;
+  --text: #1e293b;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+  --accent: #2563eb;
+  --accent-soft: rgba(37, 99, 235, 0.12);
+  --shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 20px 50px rgba(15, 23, 42, 0.12);
+  color: var(--text);
+
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -93,12 +106,28 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-.login-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
+    .login-banner {
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+
+    .login-banner img {
+      max-width: 100%;
+      height: auto;
+      max-height: 160px;
+      object-fit: contain;
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    .login-brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+      text-align: center;
+    }
 
 .login-logo {
   width: 44px;
