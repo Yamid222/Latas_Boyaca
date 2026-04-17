@@ -5,6 +5,7 @@ const TITLES = {
   inventario: ['Inventario', 'Control de existencias'],
   categoria: ['Categoría', 'Organización del catálogo'],
   proveedores: ['Proveedores', 'Red de suministro'],
+  compras: ['Compras', 'Órdenes y adquisiciones'],
   ventas: ['Ventas', 'Desempeño comercial'],
   pedidos: ['Pedidos', 'Seguimiento de órdenes'],
   perdidas: ['Pérdidas', 'Mermas y ajustes'],
