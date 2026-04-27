@@ -3,8 +3,9 @@ import { validateCredentials } from '../models/userModel.js';
 const TITLES = {
   dashboard: ['Dashboard', 'Resumen general del negocio'],
   inventario: ['Inventario', 'Control de existencias'],
+  productos: ['Productos', 'Catálogo de autopartes'],
   categoria: ['Categoría', 'Organización del catálogo'],
-  proveedores: ['Proveedores', 'Red de suministro'],
+  proveedores: ['Proveedores', 'Importadores y contacto'],
   compras: ['Compras', 'Órdenes y adquisiciones'],
   ventas: ['Ventas', 'Desempeño comercial'],
   pedidos: ['Pedidos', 'Seguimiento de órdenes'],
@@ -155,6 +156,23 @@ export function initAuth() {
   const iconMoon = document.getElementById('iconMoon');
   const html = document.documentElement;
 
+  const missing = [];
+  if (!loginScreen) missing.push('loginScreen');
+  if (!appShell) missing.push('appShell');
+  if (!loginForm) missing.push('loginForm');
+  if (!pageTitle) missing.push('pageTitle');
+  if (!userName) missing.push('userName');
+  if (!userAvatar) missing.push('userAvatar');
+  if (!nav) missing.push('mainNav');
+  if (!sidebar) missing.push('sidebar');
+  if (!overlay) missing.push('sidebarOverlay');
+  if (!menuToggle) missing.push('menuToggle');
+  if (!themeToggle) missing.push('themeToggle');
+  if (!iconSun || !iconMoon) missing.push('iconos de tema');
+  if (missing.length) {
+    throw new Error(`Vistas incompletas: faltan elementos (${missing.join(', ')}). ¿Se cargaron views/login.html y views/dashboard.html?`);
+  }
+
   function closeMobileMenu() {
     sidebar.classList.remove('is-open');
     overlay.classList.remove('is-open');
@@ -167,6 +185,7 @@ export function initAuth() {
 
   function showDashboardView(id) {
     showView(id, pageTitle, nav);
+    window.dispatchEvent(new CustomEvent('lb-view', { detail: { id } }));
     closeMobileMenu();
     if (id === 'dashboard') {
       requestAnimationFrame(() => initCharts());
@@ -228,8 +247,10 @@ export function initAuth() {
     const password = passwordInput.value;
 
     if (!validateCredentials(email, password)) {
-      loginError.textContent = 'Correo o contraseña incorrectos.';
-      loginError.hidden = false;
+      if (loginError) {
+        loginError.textContent = 'Correo o contraseña incorrectos.';
+        loginError.hidden = false;
+      }
       return;
     }
 
@@ -252,4 +273,34 @@ export function initAuth() {
   window.addEventListener('resize', () => {
     if (window.innerWidth > 900) closeMobileMenu();
   });
+
+  import('../assets/js/compras.js')
+    .then((m) => {
+      if (typeof m.initCompras === 'function') m.initCompras();
+    })
+    .catch((err) => console.error('Compras:', err));
+
+  import('../assets/js/proveedores.js')
+    .then((m) => {
+      if (typeof m.initProveedores === 'function') m.initProveedores();
+    })
+    .catch((err) => console.error('Proveedores:', err));
+
+  import('../assets/js/productos.js')
+    .then((m) => {
+      if (typeof m.initProductos === 'function') m.initProductos();
+    })
+    .catch((err) => console.error('Productos:', err));
+
+  import('../assets/js/categorias.js')
+    .then((m) => {
+      if (typeof m.initCategorias === 'function') m.initCategorias();
+    })
+    .catch((err) => console.error('Categorías:', err));
+
+  import('../assets/js/inventario.js')
+    .then((m) => {
+      if (typeof m.initInventario === 'function') m.initInventario();
+    })
+    .catch((err) => console.error('Inventario:', err));
 }

@@ -10,5 +10,5 @@ const out = `/* Generado por build-view-bundles.mjs — copia de views/*.html pa
 export const loginHtmlFallback = ${JSON.stringify(login)};
 export const dashboardHtmlFallback = ${JSON.stringify(dashboard)};
 `;
-fs.writeFileSync(path.join(__dirname, 'viewFallbacks.mjs'), out, 'utf8');
-console.log('viewFallbacks.mjs generado');
+fs.writeFileSync(path.join(__dirname, 'viewFallbacks.js'), out, 'utf8');
+console.log('viewFallbacks.js generado');

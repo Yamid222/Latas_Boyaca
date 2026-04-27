@@ -21,6 +21,10 @@
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
           Inventario
         </button>
+        <button type="button" class="nav-item" data-view="productos">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M8.25 21h3.75a.75.75 0 00.75-.75V9.375a.75.75 0 00-.75-.75H8.25a.75.75 0 00-.75.75v10.875c0 .414.336.75.75.75z" /><path stroke-linecap="round" stroke-linejoin="round" d="M12 9.75v10.875c0 .414.336.75.75.75h3.75a.75.75 0 00.75-.75V9.375a.75.75 0 00-.75-.75h-3.75a.75.75 0 00-.75.75z" /></svg>
+          Productos
+        </button>
         <button type="button" class="nav-item" data-view="categoria">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6z" /></svg>
           Categoría
@@ -30,7 +34,7 @@
           Proveedores
         </button>
         <button type="button" class="nav-item" data-view="compras">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l3.97 14.89c.173.646.75 1.1 1.42 1.1h9.686a1.5 1.5 0 001.42-1.01l3.04-9.04a1.5 1.5 0 00-1.42-1.99H7.5m0 0v-3.375A2.25 2.25 0 0112 2.25h.375m-4.125 4.5h12.75m-10.5 0v3.375a1.875 1.875 0 001.875 1.875h1.125M17.625 15h3.375" /></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" /></svg>
           Compras
         </button>
         <button type="button" class="nav-item" data-view="ventas">
@@ -172,75 +176,488 @@
         <section class="view" id="view-inventario" data-view-panel="inventario">
           <div class="placeholder-hero">
             <h2>Inventario</h2>
-            <p>Vista simulada: aquí podrías listar SKU, ubicaciones y alertas de stock mínimo.</p>
+            <p>Control de existencias con datos reales desde MySQL.</p>
           </div>
+          <p class="compras-msg" id="invModuleMsg" hidden></p>
           <div class="panel">
-            <h2>Productos (demo)</h2>
-            <table class="data-table">
-              <thead><tr><th>Código</th><th>Nombre</th><th>Stock</th><th>Estado</th></tr></thead>
-              <tbody>
-                <tr><td>LT-001</td><td>Lata estándar 350 ml</td><td>420</td><td><span class="badge ok">OK</span></td></tr>
-                <tr><td>LT-014</td><td>Lata premium 500 ml</td><td>18</td><td><span class="badge warn">Bajo</span></td></tr>
-                <tr><td>LT-022</td><td>Tapas universales</td><td>2.100</td><td><span class="badge ok">OK</span></td></tr>
-              </tbody>
-            </table>
+            <h2>Productos</h2>
+            <div class="table-wrap">
+              <table class="data-table" id="invTabla">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Código</th>
+                    <th>Nombre</th>
+                    <th>Marca</th>
+                    <th>Categoría</th>
+                    <th>Precio venta</th>
+                    <th>Stock</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody id="invTablaBody"></tbody>
+              </table>
+            </div>
+            <p class="compras-empty" id="invEmpty" hidden>No hay productos registrados.</p>
+          </div>
+        </section>
+
+        <!-- Productos -->
+        <section class="view" id="view-productos" data-view-panel="productos">
+          <div class="compras-toolbar">
+            <div>
+              <h2 class="compras-title">Productos</h2>
+              <p class="compras-sub">Autopartes: nombre, marca, categoría, stock y precio. Se usan en compras.</p>
+            </div>
+            <button type="button" class="btn btn-primary btn-inline" id="prodBtnNuevo">Nuevo producto</button>
+          </div>
+          <p class="compras-msg" id="prodModuleMsg" hidden></p>
+          <div class="panel">
+            <div class="table-wrap">
+              <table class="data-table" id="prodTabla">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th>Marca</th>
+                    <th>Categoría</th>
+                    <th>Precio</th>
+                    <th class="compras-col-acc">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="prodTablaBody"></tbody>
+              </table>
+            </div>
+            <p class="compras-empty" id="prodEmpty" hidden>No hay productos registrados.</p>
+          </div>
+
+          <div class="lb-modal" id="modalProdNuevo" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel" role="dialog">
+              <h2>Nuevo producto</h2>
+              <form id="formProdNuevo">
+                <div class="compras-form-grid">
+                  <div class="field">
+                    <label for="prodNuevoNombre">Nombre</label>
+                    <input type="text" id="prodNuevoNombre" class="compras-control" required maxlength="100">
+                  </div>
+                  <div class="field">
+                    <label for="prodNuevoMarca">Marca</label>
+                    <input type="text" id="prodNuevoMarca" class="compras-control" maxlength="100">
+                  </div>
+                  <div class="field">
+                    <label for="prodNuevoCat">Categoría</label>
+                    <select id="prodNuevoCat" class="compras-control" required></select>
+                  </div>
+                  <div class="field">
+                    <label for="prodNuevoPrecio">Precio inicial (COP)</label>
+                    <input type="number" id="prodNuevoPrecio" class="compras-control" min="0" step="0.01" placeholder="0">
+                  </div>
+                </div>
+                <div class="compras-modal-actions">
+                  <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
+                  <button type="submit" class="btn btn-primary btn-inline">Guardar</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="lb-modal" id="modalProdEdit" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel" role="dialog">
+              <h2>Editar producto</h2>
+              <form id="formProdEdit">
+                <input type="hidden" id="prodEditId" value="">
+                <div class="compras-form-grid">
+                  <div class="field">
+                    <label for="prodEditNombre">Nombre</label>
+                    <input type="text" id="prodEditNombre" class="compras-control" required maxlength="100">
+                  </div>
+                  <div class="field">
+                    <label for="prodEditMarca">Marca</label>
+                    <input type="text" id="prodEditMarca" class="compras-control" maxlength="100">
+                  </div>
+                  <div class="field">
+                    <label for="prodEditCat">Categoría</label>
+                    <select id="prodEditCat" class="compras-control" required></select>
+                  </div>
+                  <div class="field">
+                    <label for="prodEditPrecio">Precio inicial (COP)</label>
+                    <input type="number" id="prodEditPrecio" class="compras-control" min="0" step="0.01">
+                  </div>
+                </div>
+                <div class="compras-modal-actions">
+                  <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
+                  <button type="submit" class="btn btn-primary btn-inline">Guardar cambios</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="lb-modal" id="modalProdEliminar" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel lb-modal-panel--sm" role="dialog">
+              <h2>Eliminar producto</h2>
+              <p id="prodEliminarMsg" class="compras-recibir-txt"></p>
+              <input type="hidden" id="prodEliminarId" value="">
+              <div class="compras-modal-actions">
+                <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
+                <button type="button" class="btn btn-danger-inline btn-inline" id="prodBtnConfirmEliminar">Eliminar</button>
+              </div>
+            </div>
           </div>
         </section>
 
         <!-- Categoría -->
         <section class="view" id="view-categoria" data-view-panel="categoria">
-          <div class="placeholder-hero">
-            <h2>Categorías</h2>
-            <p>Gestión simulada de categorías para organizar catálogo y reportes.</p>
+          <div class="compras-toolbar">
+            <div>
+              <h2 class="compras-title">Categorías</h2>
+              <p class="compras-sub">Gestión real de categorías para productos.</p>
+            </div>
+            <button type="button" class="btn btn-primary btn-inline" id="catBtnNueva">Nueva categoría</button>
           </div>
+          <p class="compras-msg" id="catModuleMsg" hidden></p>
           <div class="panel">
-            <h2>Listado</h2>
-            <table class="data-table">
-              <thead><tr><th>Nombre</th><th>Productos</th><th>Visible</th></tr></thead>
-              <tbody>
-                <tr><td>Bebidas</td><td>156</td><td><span class="badge ok">Sí</span></td></tr>
-                <tr><td>Envases</td><td>89</td><td><span class="badge ok">Sí</span></td></tr>
-                <tr><td>Accesorios</td><td>34</td><td><span class="badge ok">Sí</span></td></tr>
-              </tbody>
-            </table>
+            <div class="table-wrap">
+              <table class="data-table" id="catTabla">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th class="compras-col-acc">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="catTablaBody"></tbody>
+              </table>
+            </div>
+            <p class="compras-empty" id="catEmpty" hidden>No hay categorías registradas.</p>
+          </div>
+
+          <div class="lb-modal" id="modalCatNueva" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel" role="dialog">
+              <h2>Nueva categoría</h2>
+              <form id="formCatNueva">
+                <div class="compras-form-grid">
+                  <div class="field">
+                    <label for="catNuevoNombre">Nombre</label>
+                    <input type="text" id="catNuevoNombre" class="compras-control" required maxlength="100">
+                  </div>
+                </div>
+                <div class="compras-modal-actions">
+                  <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
+                  <button type="submit" class="btn btn-primary btn-inline">Guardar</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="lb-modal" id="modalCatEditar" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel" role="dialog">
+              <h2>Editar categoría</h2>
+              <form id="formCatEditar">
+                <input type="hidden" id="catEditId" value="">
+                <div class="compras-form-grid">
+                  <div class="field">
+                    <label for="catEditNombre">Nombre</label>
+                    <input type="text" id="catEditNombre" class="compras-control" required maxlength="100">
+                  </div>
+                </div>
+                <div class="compras-modal-actions">
+                  <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
+                  <button type="submit" class="btn btn-primary btn-inline">Guardar cambios</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="lb-modal" id="modalCatEliminar" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel lb-modal-panel--sm" role="dialog">
+              <h2>Eliminar categoría</h2>
+              <p id="catEliminarMsg" class="compras-recibir-txt"></p>
+              <input type="hidden" id="catEliminarId" value="">
+              <div class="compras-modal-actions">
+                <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
+                <button type="button" class="btn btn-danger-inline btn-inline" id="catBtnConfirmEliminar">Eliminar</button>
+              </div>
+            </div>
           </div>
         </section>
 
-        <!-- Proveedores -->
+        <!-- Proveedores (importadores) -->
         <section class="view" id="view-proveedores" data-view-panel="proveedores">
-          <div class="placeholder-hero">
-            <h2>Proveedores</h2>
-            <p>Contactos y condiciones comerciales (contenido de demostración).</p>
+          <div class="compras-toolbar">
+            <div>
+              <h2 class="compras-title">Proveedores</h2>
+              <p class="compras-sub">Importadores: datos de contacto para órdenes de compra.</p>
+            </div>
+            <button type="button" class="btn btn-primary btn-inline" id="provBtnNuevo">Nuevo proveedor</button>
           </div>
+          <p class="compras-msg" id="provModuleMsg" hidden></p>
           <div class="panel">
-            <h2>Proveedores activos</h2>
-            <table class="data-table">
-              <thead><tr><th>Empresa</th><th>Ciudad</th><th>Última compra</th></tr></thead>
-              <tbody>
-                <tr><td>Metalúrgica Andina</td><td>Bogotá</td><td>05 abr 2026</td></tr>
-                <tr><td>Distribuidora del Centro</td><td>Tunja</td><td>02 abr 2026</td></tr>
-                <tr><td>Importadora Pacífico</td><td>Medellín</td><td>28 mar 2026</td></tr>
-              </tbody>
-            </table>
+            <div class="table-wrap">
+              <table class="data-table" id="provTabla">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th>Teléfono</th>
+                    <th>Correo</th>
+                    <th class="compras-col-acc">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="provTablaBody"></tbody>
+              </table>
+            </div>
+            <p class="compras-empty" id="provEmpty" hidden>No hay proveedores registrados.</p>
+          </div>
+
+          <div class="lb-modal" id="modalProvNuevo" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel" role="dialog">
+              <h2>Nuevo proveedor</h2>
+              <form id="formProvNuevo">
+                <div class="compras-form-grid">
+                  <div class="field">
+                    <label for="provNuevoNombre">Nombre</label>
+                    <input type="text" id="provNuevoNombre" class="compras-control" required maxlength="100">
+                  </div>
+                  <div class="field">
+                    <label for="provNuevoTel">Teléfono</label>
+                    <input type="text" id="provNuevoTel" class="compras-control" maxlength="20">
+                  </div>
+                  <div class="field compras-field-span-2">
+                    <label for="provNuevoCorreo">Correo</label>
+                    <input type="email" id="provNuevoCorreo" class="compras-control" maxlength="100" placeholder="contacto@empresa.com">
+                  </div>
+                </div>
+                <div class="compras-modal-actions">
+                  <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
+                  <button type="submit" class="btn btn-primary btn-inline">Guardar</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="lb-modal" id="modalProvEdit" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel" role="dialog">
+              <h2>Editar proveedor</h2>
+              <form id="formProvEdit">
+                <input type="hidden" id="provEditId" value="">
+                <div class="compras-form-grid">
+                  <div class="field">
+                    <label for="provEditNombre">Nombre</label>
+                    <input type="text" id="provEditNombre" class="compras-control" required maxlength="100">
+                  </div>
+                  <div class="field">
+                    <label for="provEditTel">Teléfono</label>
+                    <input type="text" id="provEditTel" class="compras-control" maxlength="20">
+                  </div>
+                  <div class="field compras-field-span-2">
+                    <label for="provEditCorreo">Correo</label>
+                    <input type="email" id="provEditCorreo" class="compras-control" maxlength="100">
+                  </div>
+                </div>
+                <div class="compras-modal-actions">
+                  <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
+                  <button type="submit" class="btn btn-primary btn-inline">Guardar cambios</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="lb-modal" id="modalProvEliminar" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel lb-modal-panel--sm" role="dialog">
+              <h2>Eliminar proveedor</h2>
+              <p id="provEliminarMsg" class="compras-recibir-txt"></p>
+              <input type="hidden" id="provEliminarId" value="">
+              <div class="compras-modal-actions">
+                <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
+                <button type="button" class="btn btn-danger-inline btn-inline" id="provBtnConfirmEliminar">Eliminar</button>
+              </div>
+            </div>
           </div>
         </section>
 
         <!-- Compras -->
         <section class="view" id="view-compras" data-view-panel="compras">
-          <div class="placeholder-hero">
-            <h2>Compras</h2>
-            <p>Registro de órdenes de compra y recepciones (contenido de demostración).</p>
+          <div class="compras-toolbar">
+            <div>
+              <h2 class="compras-title">Compras</h2>
+              <p class="compras-sub">Gestión de compras a importadores (MySQL).</p>
+            </div>
+            <button type="button" class="btn btn-primary btn-inline" id="comprasBtnNueva" aria-expanded="false" aria-controls="comprasPanelNueva">
+              <span class="compras-btn-nueva-text">Nueva compra</span>
+            </button>
           </div>
+          <p class="compras-msg" id="comprasModuleMsg" hidden></p>
+
+          <!-- Panel desplegable: nueva compra -->
+          <div class="compras-expandable" id="comprasPanelNueva" aria-hidden="true">
+            <div class="compras-expandable-inner panel">
+              <div class="compras-expandable-head">
+                <h3 class="compras-expandable-title" id="tituloNuevaCompra">Nueva compra</h3>
+                <button type="button" class="btn btn-ghost btn-sm compras-expandable-close" id="comprasBtnCerrarNueva" aria-label="Cerrar">✕</button>
+              </div>
+              <form id="formCompraNueva" data-total-id="compraNuevaTotal">
+                <div class="compras-form-grid">
+                  <div class="field">
+                    <label for="compraNuevaImportador">Proveedor</label>
+                    <select id="compraNuevaImportador" class="compras-control" required aria-label="Proveedor de la compra"></select>
+                  </div>
+                  <div class="field">
+                    <label for="compraNuevaFecha">Fecha</label>
+                    <input type="date" id="compraNuevaFecha" class="compras-control" required>
+                  </div>
+                </div>
+                <p class="compras-hint">Al guardar la compra, la cantidad se suma al inventario y se actualiza el precio de venta del producto.</p>
+                <div class="table-wrap compras-table-lines">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Producto</th>
+                        <th>Cantidad</th>
+                        <th>Precio compra</th>
+                        <th>Precio venta</th>
+                        <th>Subtotal</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="comprasNuevaFilas" class="compras-tbody-filas"></tbody>
+                  </table>
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm" id="comprasBtnAddFilaNueva">+ Agregar producto</button>
+                <div class="compras-total-bar">
+                  <span>Total</span>
+                  <strong id="compraNuevaTotal">$ 0</strong>
+                </div>
+                <div class="compras-modal-actions">
+                  <button type="button" class="btn btn-secondary btn-inline" id="comprasBtnCancelarNueva">Cancelar</button>
+                  <button type="submit" class="btn btn-primary btn-inline">Guardar compra</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- Panel desplegable: editar compra -->
+          <div class="compras-expandable" id="comprasPanelEditar" aria-hidden="true">
+            <div class="compras-expandable-inner panel">
+              <div class="compras-expandable-head">
+                <h3 class="compras-expandable-title" id="comprasEditTitulo">Editar compra</h3>
+                <button type="button" class="btn btn-ghost btn-sm compras-expandable-close" id="comprasBtnCerrarEditar" aria-label="Cerrar">✕</button>
+              </div>
+              <form id="formCompraEditar" data-total-id="compraEditTotal">
+                <input type="hidden" id="compraEditId" value="">
+                <div class="compras-form-grid">
+                  <div class="field">
+                    <label for="compraEditImportador">Importador</label>
+                    <select id="compraEditImportador" class="compras-control" required></select>
+                  </div>
+                  <div class="field">
+                    <label for="compraEditFecha">Fecha</label>
+                    <input type="date" id="compraEditFecha" class="compras-control" required>
+                  </div>
+                  <div class="field">
+                    <label for="compraEditEstado">Estado</label>
+                    <select id="compraEditEstado" class="compras-control">
+                      <option value="pendiente">Pendiente</option>
+                      <option value="en_transito">En tránsito</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="table-wrap compras-table-lines">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Producto</th>
+                        <th>Cantidad</th>
+                        <th>Precio compra</th>
+                        <th>Precio venta</th>
+                        <th>Subtotal</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="comprasEditFilas" class="compras-tbody-filas"></tbody>
+                  </table>
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm" id="comprasBtnAddFilaEdit">+ Agregar producto</button>
+                <div class="compras-total-bar">
+                  <span>Total</span>
+                  <strong id="compraEditTotal">$ 0</strong>
+                </div>
+                <div class="compras-modal-actions">
+                  <button type="button" class="btn btn-secondary btn-inline" id="comprasBtnCancelarEditar">Cancelar</button>
+                  <button type="submit" class="btn btn-primary btn-inline">Guardar cambios</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
           <div class="panel">
-            <h2>Órdenes recientes</h2>
-            <table class="data-table">
-              <thead><tr><th>OC</th><th>Proveedor</th><th>Estado</th><th>Total</th><th>Fecha</th></tr></thead>
-              <tbody>
-                <tr><td>OC-2401</td><td>Metalúrgica Andina</td><td><span class="badge ok">Recibida</span></td><td>$ 4.2M</td><td>12 abr 2026</td></tr>
-                <tr><td>OC-2402</td><td>Distribuidora del Centro</td><td><span class="badge warn">En tránsito</span></td><td>$ 1.8M</td><td>14 abr 2026</td></tr>
-                <tr><td>OC-2403</td><td>Importadora Pacífico</td><td><span class="badge ok">Aprobada</span></td><td>$ 6.5M</td><td>15 abr 2026</td></tr>
-              </tbody>
-            </table>
+            <div class="table-wrap">
+              <table class="data-table" id="comprasTabla">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Importador</th>
+                    <th>Estado</th>
+                    <th>Total</th>
+                    <th>Fecha</th>
+                    <th class="compras-col-acc">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="comprasTablaBody"></tbody>
+              </table>
+            </div>
+            <p class="compras-empty" id="comprasEmpty" hidden>No hay compras registradas.</p>
+          </div>
+
+          <!-- Modal: detalle -->
+          <div class="lb-modal" id="modalCompraDetalle" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel" role="dialog">
+              <h2 id="detalleCompraTitulo">Detalle</h2>
+              <p id="detalleCompraMeta" class="compras-meta"></p>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Producto</th>
+                      <th>Cantidad</th>
+                      <th>Precio</th>
+                      <th>Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody id="comprasDetalleCuerpo"></tbody>
+                </table>
+              </div>
+              <div class="compras-total-bar">
+                <span>Total</span>
+                <strong id="comprasDetalleTotal">$ 0</strong>
+              </div>
+              <div class="compras-modal-actions">
+                <button type="button" class="btn btn-primary btn-inline" data-close-modal>Cerrar</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Modal: recibir -->
+          <div class="lb-modal" id="modalCompraRecibir" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel lb-modal-panel--sm" role="dialog">
+              <h2>Recibir compra</h2>
+              <p id="recibirCompraMsg" class="compras-recibir-txt"></p>
+              <input type="hidden" id="recibirCompraId" value="">
+              <div class="compras-modal-actions">
+                <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
+                <button type="button" class="btn btn-recibir btn-inline" id="comprasBtnConfirmarRecibir">Confirmar recepción</button>
+              </div>
+            </div>
           </div>
         </section>
 

@@ -1,0 +1,12 @@
+# ES modules: algunos navegadores rechazan .mjs si el MIME no es JavaScript
+<IfModule mod_mime.c>
+  AddType application/javascript .js
+  AddType application/javascript .mjs
+</IfModule>
+
+# Plantillas HTML: que el navegador no guarde copias eternas (el menú se carga por fetch).
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+</IfModule>
