@@ -663,10 +663,14 @@
 
         <!-- Ventas -->
         <section class="view" id="view-ventas" data-view-panel="ventas">
-          <div class="placeholder-hero">
-            <h2>Ventas</h2>
-            <p>Resumen de ventas por canal y período (datos ficticios).</p>
+          <div class="compras-toolbar">
+            <div>
+              <h2 class="compras-title">Ventas</h2>
+              <p class="compras-sub">Cabecera en <code>ventas</code>, líneas en <code>detalle_venta</code> y tipo de pago desde Configuración. El precio por línea se sugiere desde el catálogo (<code>precioInicial</code>).</p>
+            </div>
+            <button type="button" class="btn btn-primary btn-inline" id="ventasBtnNueva">Nueva venta</button>
           </div>
+          <p class="compras-msg" id="ventasModuleMsg" hidden></p>
           <div class="stats-grid">
             <article class="stat-card">
               <header>
@@ -675,26 +679,169 @@
                   <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </div>
               </header>
-              <p class="stat-value">$ 3.1M</p>
+              <p class="stat-value" id="ventaStatHoy">—</p>
             </article>
             <article class="stat-card">
               <header>
-                <span class="stat-label">Semana</span>
+                <span class="stat-label">7 días</span>
                 <div class="stat-icon green" aria-hidden="true">
                   <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" /></svg>
                 </div>
               </header>
-              <p class="stat-value">$ 18.4M</p>
+              <p class="stat-value" id="ventaStatSemana">—</p>
             </article>
             <article class="stat-card">
               <header>
-                <span class="stat-label">Ticket promedio</span>
+                <span class="stat-label">Ticket prom. (mes)</span>
                 <div class="stat-icon amber" aria-hidden="true">
                   <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
                 </div>
               </header>
-              <p class="stat-value">$ 142K</p>
+              <p class="stat-value" id="ventaStatTicket">—</p>
             </article>
+          </div>
+          <div class="panel">
+            <h2>Historial</h2>
+            <div class="table-wrap">
+              <table class="data-table" id="ventasTabla">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Fecha</th>
+                    <th>Total</th>
+                    <th>Tipo de pago</th>
+                    <th>Líneas</th>
+                    <th class="compras-col-acc">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="ventasTablaBody"></tbody>
+              </table>
+            </div>
+            <p class="compras-empty" id="ventasEmpty" hidden>No hay ventas registradas.</p>
+          </div>
+
+          <div class="lb-modal" id="modalVentaVer" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel" role="dialog">
+              <h2>Detalle de venta</h2>
+              <p id="ventaVerHead" class="compras-sub" style="margin-bottom:1rem;"></p>
+              <div class="table-wrap compras-table-lines">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Producto</th>
+                      <th>Cant.</th>
+                      <th>P. venta</th>
+                      <th>Subtotal</th>
+                      <th>P. catálogo</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ventaVerLineasBody"></tbody>
+                </table>
+              </div>
+              <div class="compras-modal-actions">
+                <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cerrar</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="lb-modal" id="modalVentaNueva" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel" role="dialog">
+              <h2>Nueva venta</h2>
+              <form id="formVentaNueva" data-total-id="ventaNuevaTotalBar">
+                <div class="compras-form-grid">
+                  <div class="field">
+                    <label for="ventaNuevaTipo">Tipo de pago</label>
+                    <select id="ventaNuevaTipo" class="compras-control" required></select>
+                  </div>
+                  <div class="field">
+                    <label for="ventaNuevaFecha">Fecha y hora</label>
+                    <input type="datetime-local" id="ventaNuevaFecha" class="compras-control" title="Se muestra la fecha y hora actuales; puede cambiarlas antes de guardar.">
+                  </div>
+                </div>
+                <p class="compras-hint">La fecha y hora se muestran con el momento actual; pulse el campo para modificarlas si lo necesita. Al elegir producto se rellena el precio de venta con el valor del catálogo; puede ajustarlo por línea.</p>
+                <div class="table-wrap compras-table-lines">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Producto</th>
+                        <th>Cantidad</th>
+                        <th>Precio venta</th>
+                        <th>Subtotal</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="ventasNuevaFilas" class="ventas-tbody-filas compras-tbody-filas"></tbody>
+                  </table>
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm" id="ventasBtnAddFilaNueva">+ Agregar producto</button>
+                <div class="compras-total-bar">
+                  <span>Total</span>
+                  <strong id="ventaNuevaTotalBar">$ 0</strong>
+                </div>
+                <div class="compras-modal-actions">
+                  <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
+                  <button type="submit" class="btn btn-primary btn-inline">Guardar venta</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="lb-modal" id="modalVentaEdit" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel" role="dialog">
+              <h2>Editar venta</h2>
+              <form id="formVentaEdit" data-total-id="ventaEditTotalBar">
+                <input type="hidden" id="ventaEditId" value="">
+                <div class="compras-form-grid">
+                  <div class="field">
+                    <label for="ventaEditTipo">Tipo de pago</label>
+                    <select id="ventaEditTipo" class="compras-control" required></select>
+                  </div>
+                  <div class="field">
+                    <label for="ventaEditFecha">Fecha y hora</label>
+                    <input type="datetime-local" id="ventaEditFecha" class="compras-control" required>
+                  </div>
+                </div>
+                <div class="table-wrap compras-table-lines">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Producto</th>
+                        <th>Cantidad</th>
+                        <th>Precio venta</th>
+                        <th>Subtotal</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="ventasEditFilas" class="ventas-tbody-filas compras-tbody-filas"></tbody>
+                  </table>
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm" id="ventasBtnAddFilaEdit">+ Agregar producto</button>
+                <div class="compras-total-bar">
+                  <span>Total</span>
+                  <strong id="ventaEditTotalBar">$ 0</strong>
+                </div>
+                <div class="compras-modal-actions">
+                  <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
+                  <button type="submit" class="btn btn-primary btn-inline">Guardar cambios</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="lb-modal" id="modalVentaEliminar" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel lb-modal-panel--sm" role="dialog">
+              <h2>Eliminar venta</h2>
+              <p id="ventaEliminarMsg" class="compras-recibir-txt"></p>
+              <input type="hidden" id="ventaEliminarId" value="">
+              <div class="compras-modal-actions">
+                <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
+                <button type="button" class="btn btn-danger-inline btn-inline" id="ventaBtnConfirmEliminar">Eliminar</button>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -757,9 +904,11 @@
 
         <!-- Configuración -->
         <section class="view" id="view-configuracion" data-view-panel="configuracion">
-          <div class="placeholder-hero">
-            <h2>Configuración</h2>
-            <p>Ajustes generales del sistema (solo maqueta, sin persistencia).</p>
+          <div class="compras-toolbar">
+            <div>
+              <h2 class="compras-title">Configuración</h2>
+              <p class="compras-sub">Preferencias de ejemplo y tipos de pago reales (MySQL <code>tipo_pago</code>) usados en ventas.</p>
+            </div>
           </div>
           <div class="panel">
             <h2>Preferencias</h2>
@@ -770,6 +919,82 @@
                 <tr><td>Notificaciones</td><td><span class="badge ok">Activadas</span></td></tr>
               </tbody>
             </table>
+          </div>
+
+          <div class="compras-toolbar" style="margin-top: 1.5rem;">
+            <div>
+              <h2 class="compras-title" style="font-size:1.1rem;">Tipos de pago</h2>
+              <p class="compras-sub">Defina aquí los medios de pago; luego elija uno al registrar cada venta.</p>
+            </div>
+            <button type="button" class="btn btn-primary btn-inline" id="tpBtnNuevo">Nuevo tipo</button>
+          </div>
+          <p class="compras-msg" id="tpModuleMsg" hidden></p>
+          <div class="panel">
+            <div class="table-wrap">
+              <table class="data-table" id="tpTabla">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th class="compras-col-acc">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="tpTablaBody"></tbody>
+              </table>
+            </div>
+            <p class="compras-empty" id="tpEmpty" hidden>No hay tipos de pago. Cree al menos uno para poder registrar ventas.</p>
+          </div>
+
+          <div class="lb-modal" id="modalTpNuevo" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel" role="dialog">
+              <h2>Nuevo tipo de pago</h2>
+              <form id="formTpNuevo">
+                <div class="compras-form-grid">
+                  <div class="field compras-field-span-2">
+                    <label for="tpNuevoNombre">Nombre</label>
+                    <input type="text" id="tpNuevoNombre" class="compras-control" required maxlength="50" placeholder="Ej. Efectivo, Transferencia…">
+                  </div>
+                </div>
+                <div class="compras-modal-actions">
+                  <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
+                  <button type="submit" class="btn btn-primary btn-inline">Guardar</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="lb-modal" id="modalTpEdit" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel" role="dialog">
+              <h2>Editar tipo de pago</h2>
+              <form id="formTpEdit">
+                <input type="hidden" id="tpEditId" value="">
+                <div class="compras-form-grid">
+                  <div class="field compras-field-span-2">
+                    <label for="tpEditNombre">Nombre</label>
+                    <input type="text" id="tpEditNombre" class="compras-control" required maxlength="50">
+                  </div>
+                </div>
+                <div class="compras-modal-actions">
+                  <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
+                  <button type="submit" class="btn btn-primary btn-inline">Guardar cambios</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="lb-modal" id="modalTpEliminar" aria-hidden="true">
+            <div class="lb-modal-backdrop" data-close-modal></div>
+            <div class="lb-modal-panel panel lb-modal-panel--sm" role="dialog">
+              <h2>Eliminar tipo de pago</h2>
+              <p id="tpEliminarMsg" class="compras-recibir-txt"></p>
+              <input type="hidden" id="tpEliminarId" value="">
+              <div class="compras-modal-actions">
+                <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
+                <button type="button" class="btn btn-danger-inline btn-inline" id="tpBtnConfirmEliminar">Eliminar</button>
+              </div>
+            </div>
           </div>
         </section>
       </main>

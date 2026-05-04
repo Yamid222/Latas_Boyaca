@@ -303,4 +303,16 @@ export function initAuth() {
       if (typeof m.initInventario === 'function') m.initInventario();
     })
     .catch((err) => console.error('Inventario:', err));
+
+  import('../assets/js/ventas.js')
+    .then((m) => {
+      if (typeof m.initVentas === 'function') m.initVentas();
+    })
+    .catch((err) => console.error('Ventas:', err));
+
+  import('../assets/js/tipoPago.js')
+    .then((m) => {
+      if (typeof m.initTipoPago === 'function') m.initTipoPago();
+    })
+    .catch((err) => console.error('Tipo pago:', err));
 }
