@@ -770,6 +770,27 @@ td.compras-panel-loading {
   margin-top: 0.25rem;
 }
 
+.compras-buscar-field {
+  max-width: 22rem;
+  margin-bottom: 1rem;
+}
+
+.compras-filtros-panel {
+  margin-bottom: 1rem;
+}
+
+.compras-filtros-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 1rem 1.5rem;
+  align-items: end;
+}
+
+.compras-filtros-grid .compras-buscar-field {
+  max-width: none;
+  margin-bottom: 0;
+}
+
 .compras-msg {
   padding: 0.75rem 1rem;
   border-radius: var(--radius-sm);
@@ -1091,6 +1112,10 @@ input[type="date"].compras-control {
   gap: 0.75rem;
   justify-content: flex-end;
   margin-top: 1rem;
+}
+
+.compras-modal-actions--spread > button:first-child {
+  margin-right: auto;
 }
 
 .compras-meta {

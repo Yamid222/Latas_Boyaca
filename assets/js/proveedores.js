@@ -37,8 +37,9 @@ async function loadLista() {
     empty.hidden = true;
     data.importadores.forEach((r) => {
       const tr = document.createElement('tr');
+      const codigo = String(r.codigo ?? '').trim() || '—';
       tr.innerHTML = `
-        <td>${r.idImportador}</td>
+        <td>${escapeHtml(codigo)}</td>
         <td>${escapeHtml(r.nombre)}</td>
         <td>${escapeHtml(r.telefono || '—')}</td>
         <td>${escapeHtml(r.correo || '—')}</td>
@@ -93,11 +94,13 @@ export function initProveedores() {
 
   formNuevo?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const codigoRaw = document.getElementById('provNuevoCodigo')?.value?.trim() ?? '';
     const payload = {
       nombre: document.getElementById('provNuevoNombre').value.trim(),
       telefono: document.getElementById('provNuevoTel').value.trim(),
       correo: document.getElementById('provNuevoCorreo').value.trim(),
     };
+    if (codigoRaw) payload.codigo = codigoRaw;
     try {
       const res = await fetch(apiUrl('api/importadores.php'), {
         method: 'POST',
@@ -118,6 +121,7 @@ export function initProveedores() {
     e.preventDefault();
     const id = parseInt(document.getElementById('provEditId').value, 10);
     const payload = {
+      codigo: document.getElementById('provEditCodigo')?.value?.trim() ?? '',
       nombre: document.getElementById('provEditNombre').value.trim(),
       telefono: document.getElementById('provEditTel').value.trim(),
       correo: document.getElementById('provEditCorreo').value.trim(),
@@ -168,6 +172,8 @@ export function initProveedores() {
         if (!data.ok) throw new Error(data.error || 'Error');
         const r = data.importador;
         document.getElementById('provEditId').value = String(r.idImportador);
+        const codigo = String(r.codigo ?? '').trim() || '';
+        document.getElementById('provEditCodigo').value = codigo;
         document.getElementById('provEditNombre').value = r.nombre || '';
         document.getElementById('provEditTel').value = r.telefono || '';
         document.getElementById('provEditCorreo').value = r.correo || '';

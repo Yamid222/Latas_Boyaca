@@ -35,6 +35,11 @@ async function fetchCatalogo() {
   return data;
 }
 
+function invalidateStockTrasVenta() {
+  window.dispatchEvent(new CustomEvent('lb-invalidate-ventas-catalog'));
+  window.dispatchEvent(new CustomEvent('lb-invalidate-compras-catalog'));
+}
+
 function formatFechaIso(fechaStr) {
   if (!fechaStr) return '—';
   const d = new Date(String(fechaStr).replace(' ', 'T'));
@@ -71,62 +76,211 @@ function fillTipoPagoSelect(select, tipos, value) {
 }
 
 function productOptionsHtml(productos) {
+  // deprecated (antes usábamos <select>); se deja por compat si alguien lo llama.
   let html = '<option value="">— Producto —</option>';
   productos.forEach((p) => {
+    html += `<option value="${p.idProducto}">${escapeHtml(p.nombre)}</option>`;
+  });
+  return html;
+}
+
+function codigoProductoVisible(p) {
+  const c = p.codigoOEM != null ? String(p.codigoOEM).trim() : '';
+  return c || String(p.idProducto ?? '');
+}
+
+function productoLabel(p) {
+  return `${codigoProductoVisible(p)} - ${p.nombre}`;
+}
+
+let ventasProductListSeq = 0;
+
+function ventasProductDatalistHtml(productos) {
+  let html = '';
+  productos.forEach((p) => {
     const precio = p.precioInicial ?? '';
-    html += `<option value="${p.idProducto}" data-precio="${precio}">${escapeHtml(p.nombre)}</option>`;
+    const stock = p.stock ?? '';
+    html += `<option value="${escapeHtml(productoLabel(p))}" data-id="${p.idProducto}" data-precio="${precio}" data-stock="${stock}"></option>`;
   });
   return html;
 }
 
 function addFilaVenta(tbody, productos, valores) {
+  ventasProductListSeq += 1;
+  const listId = `ventasProductosList${ventasProductListSeq}`;
   const tr = document.createElement('tr');
   tr.className = 'ventas-fila';
+  tr._ventasProductos = productos;
   tr.innerHTML = `
-    <td><select class="compras-control ventas-sel-producto" required>${productOptionsHtml(productos)}</select></td>
-    <td><input type="number" class="compras-control ventas-in-cant" min="1" step="1" value="${valores?.cantidad ?? 1}" required></td>
-    <td><input type="number" class="compras-control ventas-in-precio" min="0" step="0.01" value="${valores?.precio ?? ''}" required title="Precio de venta unitario"></td>
+    <td>
+      <input type="search" class="compras-control ventas-in-producto" placeholder="Buscar por código o nombre..." list="${listId}" autocomplete="off" required>
+      <datalist id="${listId}">${ventasProductDatalistHtml(productos)}</datalist>
+      <input type="hidden" class="ventas-sel-producto" value="">
+    </td>
+    <td>
+      <input type="number" class="compras-control ventas-in-cant" min="1" step="1" value="${valores?.cantidad ?? 1}" required>
+      <small class="compras-sub" style="display:block;margin-top:0.25rem;">Disp: <span class="ventas-stock">—</span></small>
+    </td>
+    <td><input type="number" class="compras-control ventas-in-precio" min="0" step="0.01" value="${valores?.precio ?? ''}" required readonly title="Precio de venta unitario (catálogo)"></td>
     <td class="compras-cel-sub ventas-cel-sub">—</td>
-    <td><button type="button" class="btn btn-ghost compras-btn-quitar ventas-btn-quitar">Quitar</button></td>
+    <td><button type="button" class="btn btn-ghost compras-btn-quitar ventas-btn-quitar">Eliminar</button></td>
   `;
   const sel = tr.querySelector('.ventas-sel-producto');
+  const inProd = tr.querySelector('.ventas-in-producto');
   const precioIn = tr.querySelector('.ventas-in-precio');
-  if (valores?.idProducto) sel.value = String(valores.idProducto);
-  if ((valores?.precio == null || valores.precio === '') && sel.selectedOptions[0]?.dataset.precio) {
-    const dp = sel.selectedOptions[0].dataset.precio;
-    if (dp !== '' && !Number.isNaN(parseFloat(dp))) precioIn.value = dp;
+  const stockEl = tr.querySelector('.ventas-stock');
+
+  if (valores?.idProducto) {
+    const found = productos.find((p) => String(p.idProducto) === String(valores.idProducto));
+    if (found) {
+      sel.value = String(found.idProducto);
+      sel.dataset.stock = String(found.stock ?? '');
+      inProd.value = productoLabel(found);
+      if (stockEl) stockEl.textContent = String(found.stock ?? '0');
+      if (valores?.precio == null || valores.precio === '') precioIn.value = String(found.precioInicial ?? '');
+      const max = parseInt(found.stock ?? '0', 10);
+      const cantIn = tr.querySelector('.ventas-in-cant');
+      if (!Number.isNaN(max) && max >= 0) cantIn.max = String(max);
+    }
   }
+
   tbody.appendChild(tr);
   bindFilaVenta(tr);
   recalcFilaVenta(tr);
 }
 
+function limpiarFilaVenta(tr) {
+  const sel = tr.querySelector('.ventas-sel-producto');
+  const inProd = tr.querySelector('.ventas-in-producto');
+  const cant = tr.querySelector('.ventas-in-cant');
+  const precio = tr.querySelector('.ventas-in-precio');
+  if (sel) {
+    sel.value = '';
+    delete sel.dataset.stock;
+  }
+  if (inProd) inProd.value = '';
+  if (cant) cant.value = '1';
+  if (cant) cant.removeAttribute('max');
+  if (precio) precio.value = '';
+  const stockEl = tr.querySelector('.ventas-stock');
+  if (stockEl) stockEl.textContent = '—';
+  recalcFilaVenta(tr);
+}
+
+function resolverProductoVentaFila(tr, completar) {
+  const productos = tr._ventasProductos || [];
+  const inProd = tr.querySelector('.ventas-in-producto');
+  const sel = tr.querySelector('.ventas-sel-producto');
+  const precio = tr.querySelector('.ventas-in-precio');
+  const cant = tr.querySelector('.ventas-in-cant');
+  const stockEl = tr.querySelector('.ventas-stock');
+  if (!inProd || !sel || !cant) return;
+
+  const typed = inProd.value.trim();
+  let found = productos.find((p) => productoLabel(p) === typed);
+  if (!found && typed !== '') {
+    found = productos.find((p) => codigoProductoVisible(p) === typed);
+  }
+  if (!found && /^\d+$/.test(typed)) {
+    found = productos.find((p) => String(p.idProducto) === typed);
+  }
+  if (!found) {
+    const legacy = /^(\d+)\s*-\s*/.exec(typed);
+    if (legacy) found = productos.find((p) => String(p.idProducto) === legacy[1]);
+  }
+
+  if (!found) {
+    sel.value = '';
+    delete sel.dataset.stock;
+    cant.removeAttribute('max');
+    if (stockEl) stockEl.textContent = '—';
+    cant.setCustomValidity('Seleccione un producto válido de la lista.');
+    return;
+  }
+
+  const form = tr.closest('form');
+  const repetido = form
+    ? [...form.querySelectorAll('.ventas-tbody-filas tr')]
+      .filter((row) => row !== tr)
+      .some((row) => String(row.querySelector('.ventas-sel-producto')?.value || '') === String(found.idProducto))
+    : false;
+  if (repetido) {
+    sel.value = '';
+    delete sel.dataset.stock;
+    inProd.value = '';
+    cant.removeAttribute('max');
+    if (stockEl) stockEl.textContent = '—';
+    cant.setCustomValidity('Ese producto ya está agregado en otra línea.');
+    alert('Ese producto ya está agregado en esta venta. Use otra línea solo para productos distintos o aumente la cantidad en la línea existente.');
+    return;
+  }
+
+  sel.value = String(found.idProducto);
+  sel.dataset.stock = String(found.stock ?? '0');
+  inProd.value = productoLabel(found);
+  const max = parseInt(found.stock ?? '0', 10);
+  if (!Number.isNaN(max) && max >= 0) cant.max = String(max);
+  if (stockEl) stockEl.textContent = String(found.stock ?? '0');
+
+  if (completar) {
+    const v = parseFloat(found.precioInicial ?? '');
+    if (precio && !Number.isNaN(v)) precio.value = String(v);
+  }
+
+  cant.setCustomValidity('');
+}
+
+function clampCantidadToStock(tr) {
+  const cant = tr.querySelector('.ventas-in-cant');
+  const sel = tr.querySelector('.ventas-sel-producto');
+  if (!cant || !sel) return;
+  const max = parseInt(sel.dataset.stock ?? cant.max ?? '', 10);
+  if (Number.isNaN(max) || max < 0) return;
+  const v = parseInt(cant.value || '0', 10) || 0;
+  if (v > max) {
+    cant.value = String(max);
+    cant.setCustomValidity(`Stock insuficiente. Disponibles: ${max}.`);
+  } else if (v >= 1) {
+    cant.setCustomValidity('');
+  }
+}
+
 function bindFilaVenta(tr) {
   const sel = tr.querySelector('.ventas-sel-producto');
+  const inProd = tr.querySelector('.ventas-in-producto');
   const cant = tr.querySelector('.ventas-in-cant');
   const precio = tr.querySelector('.ventas-in-precio');
   const quitar = tr.querySelector('.ventas-btn-quitar');
-  [sel, cant, precio].forEach((el) => el.addEventListener('input', () => recalcFilaVenta(tr)));
-  sel.addEventListener('change', () => {
-    const opt = sel.selectedOptions[0];
-    if (opt?.dataset.precio !== undefined && opt.dataset.precio !== '') {
-      const v = parseFloat(opt.dataset.precio);
-      if (!Number.isNaN(v)) precio.value = String(v);
-    }
+  [inProd, cant].forEach((el) => el.addEventListener('input', () => recalcFilaVenta(tr)));
+  inProd.addEventListener('change', () => {
+    resolverProductoVentaFila(tr, true);
+    clampCantidadToStock(tr);
+    recalcFilaVenta(tr);
+  });
+  inProd.addEventListener('blur', () => {
+    resolverProductoVentaFila(tr, false);
+    clampCantidadToStock(tr);
+    recalcFilaVenta(tr);
+  });
+  cant.addEventListener('input', () => {
+    clampCantidadToStock(tr);
     recalcFilaVenta(tr);
   });
   quitar.addEventListener('click', () => {
     const tbody = tr.parentElement;
+    const form = tbody?.closest('form');
     if (tbody.querySelectorAll('tr').length <= 1) {
-      alert('Debe haber al menos una línea de producto.');
+      limpiarFilaVenta(tr);
+      if (form) recalcTotalVentaForm(form);
       return;
     }
     tr.remove();
-    recalcTotalVentaForm(tbody.closest('form'));
+    if (form) recalcTotalVentaForm(form);
   });
 }
 
 function recalcFilaVenta(tr) {
+  clampCantidadToStock(tr);
   const cant = parseFloat(tr.querySelector('.ventas-in-cant').value) || 0;
   const precio = parseFloat(tr.querySelector('.ventas-in-precio').value) || 0;
   const sub = cant * precio;
@@ -151,15 +305,24 @@ function recalcTotalVentaForm(form) {
 
 function collectDetallesFromForm(form) {
   const detalles = [];
+  const ids = new Set();
+  let tieneDuplicado = false;
   form.querySelectorAll('.ventas-tbody-filas tr').forEach((tr) => {
     const idProducto = parseInt(tr.querySelector('.ventas-sel-producto')?.value, 10);
     const cantidad = parseInt(tr.querySelector('.ventas-in-cant')?.value, 10);
     const precio = parseFloat(tr.querySelector('.ventas-in-precio')?.value);
+    const stock = parseInt(tr.querySelector('.ventas-sel-producto')?.dataset?.stock ?? '', 10);
     if (idProducto && cantidad > 0 && !Number.isNaN(precio)) {
+      if (ids.has(idProducto)) {
+        tieneDuplicado = true;
+        return;
+      }
+      ids.add(idProducto);
+      if (!Number.isNaN(stock) && stock >= 0 && cantidad > stock) return;
       detalles.push({ idProducto, cantidad, precio });
     }
   });
-  return detalles;
+  return { detalles, tieneDuplicado };
 }
 
 async function loadStats() {
@@ -182,21 +345,35 @@ async function loadStats() {
   }
 }
 
+let ventasListaDebounce = null;
+
 async function loadLista() {
   const tbody = document.getElementById('ventasTablaBody');
   const empty = document.getElementById('ventasEmpty');
   const msg = document.getElementById('ventasModuleMsg');
   if (!tbody) return;
   msg.hidden = true;
+  const idRaw = document.getElementById('ventasBuscarId')?.value?.trim() ?? '';
+  const fecha = document.getElementById('ventasFiltroFecha')?.value ?? '';
+  const params = new URLSearchParams();
+  if (idRaw !== '' && /^\d+$/.test(idRaw)) params.set('q', idRaw);
+  if (fecha) params.set('fecha', fecha);
+  const qs = params.toString();
+  const url = qs ? `${apiUrl('api/ventas.php')}?${qs}` : apiUrl('api/ventas.php');
+  const hasFiltro = !!(idRaw || fecha);
+
   tbody.innerHTML = '<tr><td colspan="6">Cargando…</td></tr>';
   try {
-    const res = await fetch(apiUrl('api/ventas.php'), { cache: 'no-store' });
+    const res = await fetch(url, { cache: 'no-store' });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Error al listar');
     tbody.innerHTML = '';
     const rows = data.ventas || [];
     if (!rows.length) {
       empty.hidden = false;
+      empty.textContent = hasFiltro
+        ? 'Ninguna venta coincide con el ID o la fecha seleccionados.'
+        : 'No hay ventas registradas.';
       return;
     }
     empty.hidden = true;
@@ -270,6 +447,12 @@ export function initVentas() {
     }
   });
 
+  document.getElementById('ventasBuscarId')?.addEventListener('input', () => {
+    clearTimeout(ventasListaDebounce);
+    ventasListaDebounce = setTimeout(() => loadLista(), 320);
+  });
+  document.getElementById('ventasFiltroFecha')?.addEventListener('change', () => loadLista());
+
   btnNueva?.addEventListener('click', async () => {
     try {
       const cat = await fetchCatalogo();
@@ -324,7 +507,11 @@ export function initVentas() {
     e.preventDefault();
     const idTipo = parseInt(document.getElementById('ventaNuevaTipo').value, 10);
     const fechaEl = document.getElementById('ventaNuevaFecha');
-    const detalles = collectDetallesFromForm(formNueva);
+    const { detalles, tieneDuplicado } = collectDetallesFromForm(formNueva);
+    if (tieneDuplicado) {
+      alert('No puede repetir el mismo producto en una venta.');
+      return;
+    }
     const payload = { id_tipo_pago: idTipo, detalles };
     if (fechaEl?.value) payload.fecha = fechaEl.value.replace('T', ' ');
     try {
@@ -336,6 +523,7 @@ export function initVentas() {
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'No se pudo guardar');
       closeModal('modalVentaNueva');
+      invalidateStockTrasVenta();
       await loadLista();
       await loadStats();
     } catch (err) {
@@ -348,7 +536,11 @@ export function initVentas() {
     const id = parseInt(document.getElementById('ventaEditId').value, 10);
     const idTipo = parseInt(document.getElementById('ventaEditTipo').value, 10);
     const fechaEl = document.getElementById('ventaEditFecha');
-    const detalles = collectDetallesFromForm(formEdit);
+    const { detalles, tieneDuplicado } = collectDetallesFromForm(formEdit);
+    if (tieneDuplicado) {
+      alert('No puede repetir el mismo producto en una venta.');
+      return;
+    }
     const payload = {
       id_tipo_pago: idTipo,
       fecha: fechaEl?.value ? fechaEl.value.replace('T', ' ') : '',
@@ -363,6 +555,7 @@ export function initVentas() {
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'No se pudo actualizar');
       closeModal('modalVentaEdit');
+      invalidateStockTrasVenta();
       await loadLista();
       await loadStats();
     } catch (err) {
@@ -435,6 +628,7 @@ export function initVentas() {
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'No se pudo eliminar');
       closeModal('modalVentaEliminar');
+      invalidateStockTrasVenta();
       await loadLista();
       await loadStats();
     } catch (err) {

@@ -12,23 +12,68 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib.php';
 
+function tieneCodigoImportador(PDO $pdo): bool
+{
+    $st = $pdo->query("SHOW COLUMNS FROM Importador LIKE 'codigo'");
+    return (bool) $st->fetch();
+}
+
+function asegurarCodigoImportador(PDO $pdo): void
+{
+    if (tieneCodigoImportador($pdo)) {
+        return;
+    }
+    $pdo->exec("ALTER TABLE Importador ADD COLUMN codigo VARCHAR(50) NULL AFTER idImportador");
+    $pdo->exec("UPDATE Importador SET codigo = CAST(idImportador AS CHAR) WHERE codigo IS NULL OR codigo = ''");
+    $pdo->exec('ALTER TABLE Importador MODIFY codigo VARCHAR(50) NOT NULL');
+    $pdo->exec('ALTER TABLE Importador ADD UNIQUE KEY uq_importador_codigo (codigo)');
+}
+
 function listar(PDO $pdo): array
 {
+    asegurarCodigoImportador($pdo);
     $rows = $pdo->query(
-        'SELECT idImportador, nombre, telefono, correo FROM Importador ORDER BY nombre'
+        'SELECT idImportador, codigo, nombre, telefono, correo FROM Importador ORDER BY nombre'
     )->fetchAll();
     return ['ok' => true, 'importadores' => $rows];
 }
 
 function uno(PDO $pdo, int $id): array
 {
-    $st = $pdo->prepare('SELECT idImportador, nombre, telefono, correo FROM Importador WHERE idImportador = ?');
+    asegurarCodigoImportador($pdo);
+    $st = $pdo->prepare('SELECT idImportador, codigo, nombre, telefono, correo FROM Importador WHERE idImportador = ?');
     $st->execute([$id]);
     $row = $st->fetch();
     if (!$row) {
         return ['ok' => false, 'error' => 'Importador no encontrado'];
     }
     return ['ok' => true, 'importador' => $row];
+}
+
+function validarCodigoOpcional(PDO $pdo, ?string $codigo, bool $crear, int $idExcluir = 0): ?string
+{
+    $codigo = $codigo !== null ? trim($codigo) : '';
+    if ($codigo === '') {
+        return null;
+    }
+    if (strlen($codigo) > 50) {
+        return 'El código es demasiado largo.';
+    }
+    if (!preg_match('/^[a-zA-Z0-9_-]+$/', $codigo)) {
+        return 'El código solo permite letras, números, guion y guion bajo.';
+    }
+    $sql = 'SELECT idImportador FROM Importador WHERE LOWER(codigo) = LOWER(?)';
+    $params = [$codigo];
+    if (!$crear && $idExcluir > 0) {
+        $sql .= ' AND idImportador <> ?';
+        $params[] = $idExcluir;
+    }
+    $st = $pdo->prepare($sql);
+    $st->execute($params);
+    if ($st->fetch()) {
+        return 'Ese código ya está en uso por otro proveedor.';
+    }
+    return null;
 }
 
 function validar(array $in, bool $crear): ?string
@@ -56,9 +101,17 @@ function validar(array $in, bool $crear): ?string
 
 function crear(PDO $pdo, array $in): array
 {
+    asegurarCodigoImportador($pdo);
     $err = validar($in, true);
     if ($err) {
         return ['ok' => false, 'error' => $err];
+    }
+    $codigoUsuario = trim((string) ($in['codigo'] ?? ''));
+    if ($codigoUsuario !== '') {
+        $errCod = validarCodigoOpcional($pdo, $codigoUsuario, true, 0);
+        if ($errCod !== null) {
+            return ['ok' => false, 'error' => $errCod];
+        }
     }
     $st = $pdo->prepare('INSERT INTO Importador (nombre, telefono, correo) VALUES (?, ?, ?)');
     $st->execute([
@@ -66,11 +119,23 @@ function crear(PDO $pdo, array $in): array
         trim((string) ($in['telefono'] ?? '')) ?: null,
         trim((string) ($in['correo'] ?? '')) ?: null,
     ]);
-    return ['ok' => true, 'idImportador' => (int) $pdo->lastInsertId()];
+    $id = (int) $pdo->lastInsertId();
+    $codigoFinal = $codigoUsuario !== '' ? $codigoUsuario : (string) $id;
+    if ($codigoUsuario === '') {
+        $dup = $pdo->prepare('SELECT idImportador FROM Importador WHERE idImportador <> ? AND codigo = ?');
+        $dup->execute([$id, $codigoFinal]);
+        if ($dup->fetch()) {
+            $codigoFinal = 'P' . $id;
+        }
+    }
+    $up = $pdo->prepare('UPDATE Importador SET codigo = ? WHERE idImportador = ?');
+    $up->execute([$codigoFinal, $id]);
+    return ['ok' => true, 'idImportador' => $id, 'codigo' => $codigoFinal];
 }
 
 function actualizar(PDO $pdo, int $id, array $in): array
 {
+    asegurarCodigoImportador($pdo);
     if ($id <= 0) {
         return ['ok' => false, 'error' => 'ID inválido'];
     }
@@ -78,13 +143,32 @@ function actualizar(PDO $pdo, int $id, array $in): array
     if ($err) {
         return ['ok' => false, 'error' => $err];
     }
-    $st = $pdo->prepare('UPDATE Importador SET nombre = ?, telefono = ?, correo = ? WHERE idImportador = ?');
-    $st->execute([
-        trim($in['nombre']),
-        trim((string) ($in['telefono'] ?? '')) ?: null,
-        trim((string) ($in['correo'] ?? '')) ?: null,
-        $id,
-    ]);
+    if (array_key_exists('codigo', $in)) {
+        $codigoUsuario = trim((string) $in['codigo']);
+        if ($codigoUsuario === '') {
+            return ['ok' => false, 'error' => 'El código no puede quedar vacío.'];
+        }
+        $errCod = validarCodigoOpcional($pdo, $codigoUsuario, false, $id);
+        if ($errCod !== null) {
+            return ['ok' => false, 'error' => $errCod];
+        }
+        $st = $pdo->prepare('UPDATE Importador SET nombre = ?, telefono = ?, correo = ?, codigo = ? WHERE idImportador = ?');
+        $st->execute([
+            trim($in['nombre']),
+            trim((string) ($in['telefono'] ?? '')) ?: null,
+            trim((string) ($in['correo'] ?? '')) ?: null,
+            $codigoUsuario,
+            $id,
+        ]);
+    } else {
+        $st = $pdo->prepare('UPDATE Importador SET nombre = ?, telefono = ?, correo = ? WHERE idImportador = ?');
+        $st->execute([
+            trim($in['nombre']),
+            trim((string) ($in['telefono'] ?? '')) ?: null,
+            trim((string) ($in['correo'] ?? '')) ?: null,
+            $id,
+        ]);
+    }
     if ($st->rowCount() === 0) {
         $chk = $pdo->prepare('SELECT 1 FROM Importador WHERE idImportador = ?');
         $chk->execute([$id]);

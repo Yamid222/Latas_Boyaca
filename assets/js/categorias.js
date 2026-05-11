@@ -32,6 +32,34 @@ function showMsg(text, isError = false) {
   m.classList.toggle('compras-msg--error', isError);
 }
 
+function clearCatFormNuevaMsg() {
+  const el = document.getElementById('catFormNuevaMsg');
+  if (!el) return;
+  el.textContent = '';
+  el.hidden = true;
+}
+
+function showCatFormNuevaMsg(text) {
+  const el = document.getElementById('catFormNuevaMsg');
+  if (!el) return;
+  el.textContent = text;
+  el.hidden = false;
+}
+
+function clearCatEliminarAlert() {
+  const el = document.getElementById('catEliminarAlert');
+  if (!el) return;
+  el.textContent = '';
+  el.hidden = true;
+}
+
+function showCatEliminarAlert(text) {
+  const el = document.getElementById('catEliminarAlert');
+  if (!el) return;
+  el.textContent = text;
+  el.hidden = false;
+}
+
 async function readJson(res) {
   const text = await res.text();
   try {
@@ -41,37 +69,78 @@ async function readJson(res) {
   }
 }
 
-async function loadCategorias() {
+let categoriasListaCache = [];
+
+function normBusq(s) {
+  return String(s ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function filtrarCategorias(q) {
+  const nq = normBusq(q);
+  if (!nq) return categoriasListaCache;
+  return categoriasListaCache.filter((c) => {
+    const codStr = c.codigo != null && String(c.codigo) !== '' ? String(c.codigo) : String(c.idCategoria);
+    const cod = normBusq(codStr);
+    const nom = normBusq(c.nombre || '');
+    return cod.includes(nq) || nom.includes(nq);
+  });
+}
+
+function pintarCategorias(rows) {
   const tbody = document.getElementById('catTablaBody');
   const empty = document.getElementById('catEmpty');
-  const msg = document.getElementById('catModuleMsg');
+  const buscarEmpty = document.getElementById('catBuscarEmpty');
   if (!tbody || !empty) return;
-  msg.hidden = true;
-  tbody.innerHTML = '<tr><td colspan="3">Cargando…</td></tr>';
-  try {
-    const res = await fetch(apiUrl('api/categorias.php'), { cache: 'no-store' });
-    const data = await readJson(res);
-    if (!data.ok) throw new Error(data.error || 'No se pudo cargar');
-    const rows = Array.isArray(data.categorias) ? data.categorias : [];
-    tbody.innerHTML = '';
-    if (!rows.length) {
-      empty.hidden = false;
-      return;
-    }
-    empty.hidden = true;
-    rows.forEach((c) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${c.idCategoria}</td>
+  tbody.innerHTML = '';
+  if (buscarEmpty) buscarEmpty.hidden = true;
+  if (!categoriasListaCache.length) {
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+  if (!rows.length) {
+    if (buscarEmpty) buscarEmpty.hidden = false;
+    return;
+  }
+  rows.forEach((c) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td>${esc(c.codigo || c.idCategoria)}</td>
         <td>${esc(c.nombre)}</td>
         <td class="compras-acciones">
           <button type="button" class="btn btn-sm btn-primary-inline" data-cat-act="editar" data-cat-id="${c.idCategoria}" data-cat-nombre="${esc(c.nombre)}">Editar</button>
           <button type="button" class="btn btn-sm btn-ghost" data-cat-act="eliminar" data-cat-id="${c.idCategoria}" data-cat-nombre="${esc(c.nombre)}">Eliminar</button>
         </td>`;
-      tbody.appendChild(tr);
-    });
+    tbody.appendChild(tr);
+  });
+}
+
+async function loadCategorias() {
+  const tbody = document.getElementById('catTablaBody');
+  const empty = document.getElementById('catEmpty');
+  const msg = document.getElementById('catModuleMsg');
+  const buscarEmpty = document.getElementById('catBuscarEmpty');
+  if (!tbody || !empty) return;
+  msg.hidden = true;
+  if (buscarEmpty) buscarEmpty.hidden = true;
+  categoriasListaCache = [];
+  tbody.innerHTML = '<tr><td colspan="3">Cargando…</td></tr>';
+  try {
+    const res = await fetch(apiUrl('api/categorias.php'), { cache: 'no-store' });
+    const data = await readJson(res);
+    if (!data.ok) throw new Error(data.error || 'No se pudo cargar');
+    categoriasListaCache = Array.isArray(data.categorias) ? data.categorias : [];
+    const q = document.getElementById('catBuscar')?.value ?? '';
+    pintarCategorias(filtrarCategorias(q));
   } catch (e) {
     tbody.innerHTML = '';
+    categoriasListaCache = [];
+    if (buscarEmpty) buscarEmpty.hidden = true;
+    empty.hidden = true;
     showMsg(e.message || String(e), true);
   }
 }
@@ -86,34 +155,46 @@ export function initCategorias() {
     if (e.detail?.id === 'categoria') loadCategorias();
   });
 
+  document.getElementById('catBuscar')?.addEventListener('input', () => {
+    const q = document.getElementById('catBuscar')?.value ?? '';
+    pintarCategorias(filtrarCategorias(q));
+  });
+
   btnNueva?.addEventListener('click', () => {
     formNueva?.reset();
+    clearCatFormNuevaMsg();
     openModal('modalCatNueva');
   });
 
   document.querySelectorAll('#modalCatNueva [data-close-modal], #modalCatEditar [data-close-modal], #modalCatEliminar [data-close-modal]').forEach((el) => {
     el.addEventListener('click', () => {
       const modal = el.closest('.lb-modal');
-      if (modal) closeModal(modal.id);
+      if (modal) {
+        if (modal.id === 'modalCatNueva') clearCatFormNuevaMsg();
+        if (modal.id === 'modalCatEliminar') clearCatEliminarAlert();
+        closeModal(modal.id);
+      }
     });
   });
 
   formNueva?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const codigo = document.getElementById('catNuevoId').value.trim();
     const nombre = document.getElementById('catNuevoNombre').value.trim();
     try {
       const res = await fetch(apiUrl('api/categorias.php'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nombre }),
+        body: JSON.stringify({ codigo, nombre }),
       });
       const data = await readJson(res);
       if (!data.ok) throw new Error(data.error || 'No se pudo crear');
+      clearCatFormNuevaMsg();
       closeModal('modalCatNueva');
       await loadCategorias();
       window.dispatchEvent(new CustomEvent('lb-invalidate-compras-catalog'));
     } catch (err) {
-      showMsg(err.message || String(err), true);
+      showCatFormNuevaMsg(err.message || String(err));
     }
   });
 
@@ -147,11 +228,12 @@ export function initCategorias() {
       });
       const data = await readJson(res);
       if (!data.ok) throw new Error(data.error || 'No se pudo eliminar');
+      clearCatEliminarAlert();
       closeModal('modalCatEliminar');
       await loadCategorias();
       window.dispatchEvent(new CustomEvent('lb-invalidate-compras-catalog'));
     } catch (err) {
-      showMsg(err.message || String(err), true);
+      showCatEliminarAlert(err.message || String(err));
     }
   });
 
@@ -168,6 +250,7 @@ export function initCategorias() {
     }
     document.getElementById('catEliminarId').value = String(id);
     document.getElementById('catEliminarMsg').textContent = `¿Eliminar la categoría "${nombre}"?`;
+    clearCatEliminarAlert();
     openModal('modalCatEliminar');
   });
 }

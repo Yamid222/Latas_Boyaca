@@ -25,7 +25,19 @@ async function readJson(res) {
   }
 }
 
-function renderTabla(productos) {
+async function fetchUmbralStockBajo() {
+  try {
+    const res = await fetch(apiUrl('api/configuracion.php'), { cache: 'no-store' });
+    const data = await readJson(res);
+    if (!data.ok) return 10;
+    const u = Number(data.umbralStockBajo);
+    return Number.isFinite(u) && u >= 0 ? u : 10;
+  } catch {
+    return 10;
+  }
+}
+
+function renderTabla(productos, umbralStockBajo) {
   const tbody = document.getElementById('invTablaBody');
   const empty = document.getElementById('invEmpty');
   if (!tbody || !empty) return;
@@ -37,19 +49,24 @@ function renderTabla(productos) {
   }
 
   empty.hidden = true;
+  const umbral = Number(umbralStockBajo);
+  const u = Number.isFinite(umbral) && umbral >= 0 ? umbral : 10;
+
   productos.forEach((p) => {
-    const estadoStock = Number(p.stock) > 20 ? 'OK' : 'Bajo';
-    const estadoClass = estadoStock === 'OK' ? 'ok' : 'warn';
+    const codigo = String(p.codigoOEM ?? '').trim();
+    const stock = Number(p.stock) || 0;
+    const bajo = stock <= u;
+    const estadoTxt = bajo ? 'Bajo' : 'Alto';
+    const estadoClass = bajo ? 'warn' : 'ok';
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${p.idProducto}</td>
-      <td>${escapeHtml(p.codigoOEM || '—')}</td>
+      <td>${escapeHtml(codigo || '—')}</td>
       <td>${escapeHtml(p.nombre || '')}</td>
       <td>${escapeHtml(p.marca || '—')}</td>
       <td>${escapeHtml(p.categoria || '—')}</td>
       <td>${money.format(Number(p.precioInicial) || 0)}</td>
-      <td>${Number(p.stock) || 0}</td>
-      <td><span class="badge ${estadoClass}">${estadoStock}</span></td>
+      <td>${stock}</td>
+      <td><span class="badge ${estadoClass}">${estadoTxt}</span></td>
     `;
     tbody.appendChild(tr);
   });
@@ -96,21 +113,20 @@ function showMessage(text, isError = false) {
 async function cargarInventario() {
   const tbody = document.getElementById('invTablaBody');
   if (tbody) {
-    tbody.innerHTML = '<tr><td colspan="8">Cargando…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7">Cargando…</td></tr>';
   }
 
   const msg = document.getElementById('invModuleMsg');
   if (msg) msg.hidden = true;
 
   try {
-    const res = await fetch(apiUrl('api/inventario.php'), { cache: 'no-store' });
-    const data = await readJson(res);
+    const [data, umbral] = await Promise.all([fetch(apiUrl('api/inventario.php'), { cache: 'no-store' }).then(readJson), fetchUmbralStockBajo()]);
     if (!data.ok) {
       throw new Error(data.error || 'No se pudo cargar inventario.');
     }
 
     const productos = Array.isArray(data.productos) ? data.productos : [];
-    renderTabla(productos);
+    renderTabla(productos, umbral);
   } catch (err) {
     if (tbody) tbody.innerHTML = '';
     showMessage(err.message || String(err), true);
@@ -125,6 +141,13 @@ export function initInventario() {
     if (e.detail?.id === 'inventario') {
       cargarInventario();
       if (selectProducto) cargarSelectorDesdeProductos();
+    }
+  });
+
+  window.addEventListener('lb-settings-updated', () => {
+    const viewInventario = document.getElementById('view-inventario');
+    if (viewInventario?.classList.contains('is-active')) {
+      cargarInventario();
     }
   });
 

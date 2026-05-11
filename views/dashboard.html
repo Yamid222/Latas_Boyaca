@@ -41,14 +41,6 @@
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" /></svg>
           Ventas
         </button>
-        <button type="button" class="nav-item" data-view="pedidos">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>
-          Pedidos
-        </button>
-        <button type="button" class="nav-item" data-view="perdidas">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
-          Pérdidas
-        </button>
         <button type="button" class="nav-item" data-view="reportes">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 8.25H9M8.25 8.25H7.5M9 8.25h1.5M9 12h1.5M9 15.75h1.5M12 12h3.75M12 15.75h3.75M15.75 15.75h3.75M15.75 12h3.75M15.75 9h3.75M18.75 15.75h3.75M18.75 12h3.75M18.75 9h3.75" /></svg>
           Reportes
@@ -185,7 +177,6 @@
               <table class="data-table" id="invTabla">
                 <thead>
                   <tr>
-                    <th>ID</th>
                     <th>Código</th>
                     <th>Nombre</th>
                     <th>Marca</th>
@@ -213,11 +204,15 @@
           </div>
           <p class="compras-msg" id="prodModuleMsg" hidden></p>
           <div class="panel">
+            <div class="field compras-buscar-field">
+              <label for="prodBuscar">Buscar</label>
+              <input type="search" id="prodBuscar" class="compras-control" placeholder="Nombre o código" autocomplete="off" enterkeyhint="search">
+            </div>
             <div class="table-wrap">
               <table class="data-table" id="prodTabla">
                 <thead>
                   <tr>
-                    <th>ID</th>
+                    <th>Código</th>
                     <th>Nombre</th>
                     <th>Marca</th>
                     <th>Categoría</th>
@@ -228,6 +223,7 @@
                 <tbody id="prodTablaBody"></tbody>
               </table>
             </div>
+            <p class="compras-empty" id="prodBuscarEmpty" hidden>Ningún producto coincide con la búsqueda.</p>
             <p class="compras-empty" id="prodEmpty" hidden>No hay productos registrados.</p>
           </div>
 
@@ -237,6 +233,10 @@
               <h2>Nuevo producto</h2>
               <form id="formProdNuevo">
                 <div class="compras-form-grid">
+                  <div class="field">
+                    <label for="prodNuevoCodigo">Código</label>
+                    <input type="text" id="prodNuevoCodigo" class="compras-control" required maxlength="50" placeholder="Ej. PRD-001">
+                  </div>
                   <div class="field">
                     <label for="prodNuevoNombre">Nombre</label>
                     <input type="text" id="prodNuevoNombre" class="compras-control" required maxlength="100">
@@ -254,6 +254,7 @@
                     <input type="number" id="prodNuevoPrecio" class="compras-control" min="0" step="0.01" placeholder="0">
                   </div>
                 </div>
+                <p class="compras-msg" id="prodFormNuevoMsg" role="alert" hidden></p>
                 <div class="compras-modal-actions">
                   <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
                   <button type="submit" class="btn btn-primary btn-inline">Guardar</button>
@@ -269,6 +270,10 @@
               <form id="formProdEdit">
                 <input type="hidden" id="prodEditId" value="">
                 <div class="compras-form-grid">
+                  <div class="field">
+                    <label for="prodEditCodigo">Código</label>
+                    <input type="text" id="prodEditCodigo" class="compras-control" required maxlength="50">
+                  </div>
                   <div class="field">
                     <label for="prodEditNombre">Nombre</label>
                     <input type="text" id="prodEditNombre" class="compras-control" required maxlength="100">
@@ -286,6 +291,7 @@
                     <input type="number" id="prodEditPrecio" class="compras-control" min="0" step="0.01">
                   </div>
                 </div>
+                <p class="compras-msg" id="prodFormEditMsg" role="alert" hidden></p>
                 <div class="compras-modal-actions">
                   <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
                   <button type="submit" class="btn btn-primary btn-inline">Guardar cambios</button>
@@ -319,11 +325,15 @@
           </div>
           <p class="compras-msg" id="catModuleMsg" hidden></p>
           <div class="panel">
+            <div class="field compras-buscar-field">
+              <label for="catBuscar">Buscar</label>
+              <input type="search" id="catBuscar" class="compras-control" placeholder="Nombre o código de categoría" autocomplete="off" enterkeyhint="search">
+            </div>
             <div class="table-wrap">
               <table class="data-table" id="catTabla">
                 <thead>
                   <tr>
-                    <th>ID</th>
+                    <th>Código</th>
                     <th>Nombre</th>
                     <th class="compras-col-acc">Acciones</th>
                   </tr>
@@ -331,6 +341,7 @@
                 <tbody id="catTablaBody"></tbody>
               </table>
             </div>
+            <p class="compras-empty" id="catBuscarEmpty" hidden>Ninguna categoría coincide con la búsqueda.</p>
             <p class="compras-empty" id="catEmpty" hidden>No hay categorías registradas.</p>
           </div>
 
@@ -341,10 +352,15 @@
               <form id="formCatNueva">
                 <div class="compras-form-grid">
                   <div class="field">
+                    <label for="catNuevoId">Código</label>
+                    <input type="text" id="catNuevoId" class="compras-control" required maxlength="50" placeholder="Ej. CAT-A1">
+                  </div>
+                  <div class="field">
                     <label for="catNuevoNombre">Nombre</label>
                     <input type="text" id="catNuevoNombre" class="compras-control" required maxlength="100">
                   </div>
                 </div>
+                <p class="compras-msg" id="catFormNuevaMsg" role="alert" hidden></p>
                 <div class="compras-modal-actions">
                   <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
                   <button type="submit" class="btn btn-primary btn-inline">Guardar</button>
@@ -378,6 +394,7 @@
             <div class="lb-modal-panel panel lb-modal-panel--sm" role="dialog">
               <h2>Eliminar categoría</h2>
               <p id="catEliminarMsg" class="compras-recibir-txt"></p>
+              <p class="compras-msg" id="catEliminarAlert" role="alert" hidden></p>
               <input type="hidden" id="catEliminarId" value="">
               <div class="compras-modal-actions">
                 <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cancelar</button>
@@ -402,7 +419,7 @@
               <table class="data-table" id="provTabla">
                 <thead>
                   <tr>
-                    <th>ID</th>
+                    <th>Código</th>
                     <th>Nombre</th>
                     <th>Teléfono</th>
                     <th>Correo</th>
@@ -421,6 +438,11 @@
               <h2>Nuevo proveedor</h2>
               <form id="formProvNuevo">
                 <div class="compras-form-grid">
+                  <div class="field">
+                    <label for="provNuevoCodigo">Código</label>
+                    <input type="text" id="provNuevoCodigo" class="compras-control" maxlength="50" placeholder="Opcional: letras, números, guion" autocomplete="off" pattern="[a-zA-Z0-9_-]*" title="Solo letras, números, guion y guion bajo">
+                    <small class="compras-sub">Si lo deja vacío, el código será el mismo número que el ID al guardar.</small>
+                  </div>
                   <div class="field">
                     <label for="provNuevoNombre">Nombre</label>
                     <input type="text" id="provNuevoNombre" class="compras-control" required maxlength="100">
@@ -449,6 +471,10 @@
               <form id="formProvEdit">
                 <input type="hidden" id="provEditId" value="">
                 <div class="compras-form-grid">
+                  <div class="field">
+                    <label for="provEditCodigo">Código</label>
+                    <input type="text" id="provEditCodigo" class="compras-control" required maxlength="50" pattern="[a-zA-Z0-9_-]+" title="Solo letras, números, guion y guion bajo" autocomplete="off">
+                  </div>
                   <div class="field">
                     <label for="provEditNombre">Nombre</label>
                     <input type="text" id="provEditNombre" class="compras-control" required maxlength="100">
@@ -497,6 +523,21 @@
           </div>
           <p class="compras-msg" id="comprasModuleMsg" hidden></p>
 
+          <div class="panel compras-filtros-panel">
+            <div class="compras-filtros-grid">
+              <div class="field compras-buscar-field">
+                <label for="comprasBuscar">Buscar</label>
+                <input type="search" id="comprasBuscar" class="compras-control" placeholder="Nombre de producto o ID (compra o producto)" autocomplete="off" enterkeyhint="search">
+              </div>
+              <div class="field compras-buscar-field">
+                <label for="comprasFiltroProveedor">Proveedor</label>
+                <select id="comprasFiltroProveedor" class="compras-control">
+                  <option value="">Todos los proveedores</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
           <!-- Panel desplegable: nueva compra -->
           <div class="compras-expandable" id="comprasPanelNueva" aria-hidden="true">
             <div class="compras-expandable-inner panel">
@@ -507,15 +548,24 @@
               <form id="formCompraNueva" data-total-id="compraNuevaTotal">
                 <div class="compras-form-grid">
                   <div class="field">
-                    <label for="compraNuevaImportador">Proveedor</label>
-                    <select id="compraNuevaImportador" class="compras-control" required aria-label="Proveedor de la compra"></select>
+                    <label for="compraNuevaImportadorBuscar">Proveedor</label>
+                    <input type="search" id="compraNuevaImportadorBuscar" class="compras-control" list="compraNuevaImportadoresList" placeholder="Buscar proveedor..." autocomplete="off" required aria-label="Proveedor de la compra">
+                    <datalist id="compraNuevaImportadoresList"></datalist>
+                    <input type="hidden" id="compraNuevaImportador" value="">
                   </div>
                   <div class="field">
                     <label for="compraNuevaFecha">Fecha</label>
                     <input type="date" id="compraNuevaFecha" class="compras-control" required>
                   </div>
+                  <div class="field">
+                    <label for="compraNuevaEstado">Estado</label>
+                    <select id="compraNuevaEstado" class="compras-control" required>
+                      <option value="pendiente" selected>Pendiente</option>
+                      <option value="recibida">Recibida</option>
+                    </select>
+                  </div>
                 </div>
-                <p class="compras-hint">Al guardar la compra, la cantidad se suma al inventario y se actualiza el precio de venta del producto.</p>
+                <p class="compras-hint">Si la compra queda <strong>Pendiente</strong>, el inventario no cambia hasta que la marque como <strong>Recibida</strong> (aquí o con el botón Recibir). Si guarda como <strong>Recibida</strong>, se suma al inventario y se actualiza el precio de venta.</p>
                 <div class="table-wrap compras-table-lines">
                   <table class="data-table">
                     <thead>
@@ -555,8 +605,10 @@
                 <input type="hidden" id="compraEditId" value="">
                 <div class="compras-form-grid">
                   <div class="field">
-                    <label for="compraEditImportador">Importador</label>
-                    <select id="compraEditImportador" class="compras-control" required></select>
+                    <label for="compraEditImportadorBuscar">Importador</label>
+                    <input type="search" id="compraEditImportadorBuscar" class="compras-control" list="compraEditImportadoresList" placeholder="Buscar proveedor..." autocomplete="off" required>
+                    <datalist id="compraEditImportadoresList"></datalist>
+                    <input type="hidden" id="compraEditImportador" value="">
                   </div>
                   <div class="field">
                     <label for="compraEditFecha">Fecha</label>
@@ -566,7 +618,7 @@
                     <label for="compraEditEstado">Estado</label>
                     <select id="compraEditEstado" class="compras-control">
                       <option value="pendiente">Pendiente</option>
-                      <option value="en_transito">En tránsito</option>
+                      <option value="recibida">Recibida</option>
                     </select>
                   </div>
                 </div>
@@ -590,8 +642,10 @@
                   <span>Total</span>
                   <strong id="compraEditTotal">$ 0</strong>
                 </div>
-                <div class="compras-modal-actions">
+                <p class="compras-msg" id="compraEditAlert" role="alert" hidden></p>
+                <div class="compras-modal-actions compras-modal-actions--spread">
                   <button type="button" class="btn btn-secondary btn-inline" id="comprasBtnCancelarEditar">Cancelar</button>
+                  <button type="button" class="btn btn-danger-inline btn-inline" id="comprasBtnEliminarEdit">Eliminar compra</button>
                   <button type="submit" class="btn btn-primary btn-inline">Guardar cambios</button>
                 </div>
               </form>
@@ -700,6 +754,18 @@
               <p class="stat-value" id="ventaStatTicket">—</p>
             </article>
           </div>
+          <div class="panel compras-filtros-panel">
+            <div class="compras-filtros-grid">
+              <div class="field compras-buscar-field">
+                <label for="ventasBuscarId">Buscar por ID</label>
+                <input type="search" inputmode="numeric" pattern="[0-9]*" id="ventasBuscarId" class="compras-control" placeholder="Número de venta" autocomplete="off">
+              </div>
+              <div class="field compras-buscar-field">
+                <label for="ventasFiltroFecha">Fecha</label>
+                <input type="date" id="ventasFiltroFecha" class="compras-control" title="Filtra ventas del día calendario seleccionado">
+              </div>
+            </div>
+          </div>
           <div class="panel">
             <h2>Historial</h2>
             <div class="table-wrap">
@@ -760,7 +826,7 @@
                     <input type="datetime-local" id="ventaNuevaFecha" class="compras-control" title="Se muestra la fecha y hora actuales; puede cambiarlas antes de guardar.">
                   </div>
                 </div>
-                <p class="compras-hint">La fecha y hora se muestran con el momento actual; pulse el campo para modificarlas si lo necesita. Al elegir producto se rellena el precio de venta con el valor del catálogo; puede ajustarlo por línea.</p>
+                <p class="compras-hint">La fecha y hora se muestran con el momento actual; pulse el campo para modificarlas si lo necesita. Al elegir producto se rellena el precio de venta con el valor del catálogo; en este apartado no se modifica. No se permite vender más unidades de las disponibles.</p>
                 <div class="table-wrap compras-table-lines">
                   <table class="data-table">
                     <thead>
@@ -845,60 +911,93 @@
           </div>
         </section>
 
-        <!-- Pedidos -->
-        <section class="view" id="view-pedidos" data-view-panel="pedidos">
-          <div class="placeholder-hero">
-            <h2>Pedidos</h2>
-            <p>Seguimiento de pedidos en curso (simulación).</p>
-          </div>
-          <div class="panel">
-            <h2>En proceso</h2>
-            <table class="data-table">
-              <thead><tr><th>ID</th><th>Cliente</th><th>Estado</th><th>Total</th></tr></thead>
-              <tbody>
-                <tr><td>#9102</td><td>Comercial La 60</td><td><span class="badge warn">Preparación</span></td><td>$ 890.000</td></tr>
-                <tr><td>#9103</td><td>Tienda Boyacá</td><td><span class="badge ok">En ruta</span></td><td>$ 1.2M</td></tr>
-                <tr><td>#9104</td><td>Mayorista Norte</td><td><span class="badge ok">Entregado</span></td><td>$ 2.4M</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <!-- Pérdidas -->
-        <section class="view" id="view-perdidas" data-view-panel="perdidas">
-          <div class="placeholder-hero">
-            <h2>Pérdidas</h2>
-            <p>Registro simulado de mermas, vencimientos y ajustes.</p>
-          </div>
-          <div class="panel">
-            <h2>Últimos movimientos</h2>
-            <table class="data-table">
-              <thead><tr><th>Motivo</th><th>Impacto</th><th>Fecha</th></tr></thead>
-              <tbody>
-                <tr><td>Daño en transporte</td><td>$ 180.000</td><td>08 abr</td></tr>
-                <tr><td>Vencimiento cercano</td><td>24 uds.</td><td>06 abr</td></tr>
-                <tr><td>Inventario físico</td><td>−8 uds.</td><td>01 abr</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
         <!-- Reportes -->
         <section class="view" id="view-reportes" data-view-panel="reportes">
-          <div class="placeholder-hero">
-            <h2>Reportes</h2>
-            <p>Exportaciones y vistas guardadas (interfaz de ejemplo).</p>
+          <div class="compras-toolbar">
+            <div>
+              <h2 class="compras-title">Reportes</h2>
+              <p class="compras-sub">Resumen del mes: totales de ventas y compras, compras canceladas (anuladas), medios de pago y productos más vendidos.</p>
+            </div>
+            <div class="compras-toolbar-actions" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-end;">
+              <div class="field" style="margin:0;">
+                <label for="repMes">Mes</label>
+                <input type="month" id="repMes" class="compras-control">
+              </div>
+              <button type="button" class="btn btn-primary btn-inline" id="repBtnActualizar">Actualizar</button>
+            </div>
           </div>
-          <div class="panel">
-            <h2>Plantillas disponibles</h2>
-            <table class="data-table">
-              <thead><tr><th>Reporte</th><th>Formato</th><th>Última ejecución</th></tr></thead>
-              <tbody>
-                <tr><td>Ventas por vendedor</td><td>Excel</td><td>10 abr 2026</td></tr>
-                <tr><td>Rotación de inventario</td><td>PDF</td><td>09 abr 2026</td></tr>
-                <tr><td>Márgenes por categoría</td><td>Excel</td><td>07 abr 2026</td></tr>
-              </tbody>
-            </table>
+          <p class="compras-msg" id="repMsg" hidden></p>
+          <p class="compras-sub" style="margin:0 0 1rem;">Período: <strong id="repPeriodoLabel">—</strong></p>
+
+          <div class="stats-grid" style="margin-bottom:1.25rem;">
+            <article class="stat-card">
+              <header>
+                <span class="stat-label">Ventas del mes</span>
+              </header>
+              <p class="stat-value" id="repVentasTotal">—</p>
+              <p class="stat-delta"><span id="repVentasCant">0</span> ventas registradas</p>
+            </article>
+            <article class="stat-card">
+              <header>
+                <span class="stat-label">Compras del mes</span>
+              </header>
+              <p class="stat-value" id="repComprasTotal">—</p>
+              <p class="stat-delta"><span id="repComprasCant">0</span> órdenes</p>
+            </article>
+          </div>
+
+          <div class="panel" style="margin-bottom:1.25rem;">
+            <h2 style="margin-top:0;">Compras canceladas (anuladas)</h2>
+            <p class="compras-sub" style="margin-top:0;">Órdenes eliminadas en este mes (fecha de anulación). El inventario se ajustó al cancelar la compra recibida.</p>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Fecha anulación</th>
+                    <th># Compra</th>
+                    <th>Fecha compra</th>
+                    <th>Proveedor</th>
+                    <th>Estado</th>
+                    <th>Total</th>
+                  </tr>
+                </thead>
+                <tbody id="repTblComprasAnuladasBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel" style="margin-bottom:1.25rem;">
+            <h2 style="margin-top:0;">Ventas por tipo de pago</h2>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Tipo de pago</th>
+                    <th>Ventas</th>
+                    <th>Total</th>
+                  </tr>
+                </thead>
+                <tbody id="repTblTipoPagoBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel" style="margin-bottom:1.25rem;">
+            <h2 style="margin-top:0;">Productos más vendidos (unidades)</h2>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Código</th>
+                    <th>Producto</th>
+                    <th>Unidades</th>
+                    <th>Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody id="repTblTopBody"></tbody>
+              </table>
+            </div>
           </div>
         </section>
 
@@ -919,6 +1018,22 @@
                 <tr><td>Notificaciones</td><td><span class="badge ok">Activadas</span></td></tr>
               </tbody>
             </table>
+          </div>
+
+          <div class="panel" style="margin-top: 1rem;">
+            <h2>Inventario</h2>
+            <p class="compras-sub">Define hasta qué cantidad de unidades el stock se considera <strong>Bajo</strong> en la vista de inventario. Por encima de ese número se muestra <strong>Alto</strong>.</p>
+            <div class="compras-form-grid" style="max-width: 28rem;">
+              <div class="field">
+                <label for="cfgUmbralStockBajo">Umbral &quot;stock bajo&quot; (unidades)</label>
+                <input type="number" id="cfgUmbralStockBajo" class="compras-control" min="0" max="999999" step="1" value="10" required>
+                <small class="compras-sub">Ej.: con 10, los productos con stock ≤ 10 muestran estado <em>Bajo</em>.</small>
+              </div>
+            </div>
+            <p class="compras-msg" id="cfgInventarioMsg" hidden></p>
+            <div style="margin-top: 0.75rem;">
+              <button type="button" class="btn btn-primary btn-inline" id="cfgBtnGuardarUmbral">Guardar umbral</button>
+            </div>
           </div>
 
           <div class="compras-toolbar" style="margin-top: 1.5rem;">

@@ -5,10 +5,10 @@
  * GET ?catalog=1     → tipos_pago + productos (precioInicial = precio de catálogo)
  * GET ?stats=1       → estadísticas agregadas
  * GET ?id=N          → cabecera + líneas con nombre de producto
- * GET                → listado con tipo de pago y cantidad de líneas
- * POST               → crear (JSON: id_tipo_pago, fecha?, detalles[{idProducto,cantidad,precio}])
- * POST ?action=update&id=N
- * POST ?action=delete&id=N
+ * GET                → listado (opcional: ?q=id_venta solo dígitos, ?fecha=YYYY-MM-DD)
+ * POST               → crear (JSON: id_tipo_pago, fecha?, detalles[{idProducto,cantidad,precio}]) + salidas Inventario
+ * POST ?action=update&id=N  → ajusta inventario (revierte líneas anteriores y aplica nuevas)
+ * POST ?action=delete&id=N  → revierte inventario y borra venta
  */
 declare(strict_types=1);
 
@@ -23,19 +23,55 @@ function catalogo(PDO $pdo): array
 {
     $tipos = $pdo->query('SELECT id_tipo_pago, nombre FROM tipo_pago ORDER BY nombre')->fetchAll();
     $prod = $pdo->query(
-        'SELECT idProducto, nombre, marca, precioInicial FROM Producto ORDER BY nombre'
+        'SELECT
+            p.idProducto,
+            p.codigoOEM,
+            p.nombre,
+            p.marca,
+            p.precioInicial,
+            COALESCE(SUM(i.entrada - i.salida), 0) AS stock
+         FROM Producto p
+         LEFT JOIN Inventario i ON i.idProducto = p.idProducto
+         GROUP BY p.idProducto, p.codigoOEM, p.nombre, p.marca, p.precioInicial
+         ORDER BY p.nombre'
     )->fetchAll();
     return ['ok' => true, 'tipos_pago' => $tipos, 'productos' => $prod];
 }
 
-function listar(PDO $pdo): array
+function listar(PDO $pdo, string $qId, string $fecha): array
 {
     $sql = 'SELECT v.id_venta, v.fecha, v.total, v.id_tipo_pago, tp.nombre AS nombre_tipo_pago,
             (SELECT COUNT(*) FROM detalle_venta d WHERE d.id_venta = v.id_venta) AS num_lineas
             FROM ventas v
-            INNER JOIN tipo_pago tp ON tp.id_tipo_pago = v.id_tipo_pago
-            ORDER BY v.fecha DESC, v.id_venta DESC';
-    $rows = $pdo->query($sql)->fetchAll();
+            INNER JOIN tipo_pago tp ON tp.id_tipo_pago = v.id_tipo_pago';
+
+    $where = [];
+    $params = [];
+
+    $qId = trim($qId);
+    if ($qId !== '' && ctype_digit($qId)) {
+        $where[] = 'v.id_venta = ?';
+        $params[] = (int) $qId;
+    }
+
+    $fecha = trim($fecha);
+    if ($fecha !== '') {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
+            return ['ok' => false, 'error' => 'Fecha inválida. Use el formato AAAA-MM-DD.'];
+        }
+        $where[] = 'DATE(v.fecha) = ?';
+        $params[] = $fecha;
+    }
+
+    if ($where !== []) {
+        $sql .= ' WHERE ' . implode(' AND ', $where);
+    }
+    $sql .= ' ORDER BY v.fecha DESC, v.id_venta DESC';
+
+    $st = $pdo->prepare($sql);
+    $st->execute($params);
+    $rows = $st->fetchAll();
+
     return ['ok' => true, 'ventas' => $rows];
 }
 
@@ -169,6 +205,79 @@ function insertarLineas(PDO $pdo, int $idVenta, array $detalles): void
     }
 }
 
+/** Suma cantidades por idProducto (líneas de venta). */
+function sumarCantidadesPorProductoVenta(array $detalles): array
+{
+    $map = [];
+    foreach ($detalles as $d) {
+        $pid = (int) $d['idProducto'];
+        $q = (int) $d['cantidad'];
+        if ($pid <= 0 || $q <= 0) {
+            continue;
+        }
+        $map[$pid] = ($map[$pid] ?? 0) + $q;
+    }
+    return $map;
+}
+
+/** Stock actual según movimientos Inventario. */
+function stockProducto(PDO $pdo, int $idProducto): int
+{
+    $st = $pdo->prepare('SELECT COALESCE(SUM(entrada - salida), 0) FROM Inventario WHERE idProducto = ?');
+    $st->execute([$idProducto]);
+
+    return (int) $st->fetchColumn();
+}
+
+/** null si hay stock suficiente para todas las cantidades solicitadas. */
+function validarStockParaVenta(PDO $pdo, array $detalles): ?string
+{
+    $map = sumarCantidadesPorProductoVenta($detalles);
+    foreach ($map as $pid => $necesita) {
+        $stock = stockProducto($pdo, $pid);
+        if ($stock < $necesita) {
+            return 'Stock insuficiente para el producto (ID ' . $pid . '). Disponible: ' . $stock . ', solicitado: ' . $necesita . '.';
+        }
+    }
+
+    return null;
+}
+
+/** Registra salidas de inventario por una venta (misma forma que compras al ajustar hacia abajo). */
+function registrarSalidasInventarioVenta(PDO $pdo, array $detalles): void
+{
+    $ins = $pdo->prepare(
+        'INSERT INTO Inventario (fechaActualizacion, cantidad, idProducto, entrada, salida)
+         VALUES (NOW(), ?, ?, 0, ?)'
+    );
+    foreach (sumarCantidadesPorProductoVenta($detalles) as $pid => $cant) {
+        if ($cant <= 0) {
+            continue;
+        }
+        $ins->execute([$cant, $pid, $cant]);
+    }
+}
+
+/**
+ * Devuelve al inventario las unidades de líneas de detalle (idProducto, cantidad).
+ * @param array<int, array{idProducto:int|string,cantidad:int|string}> $lineas
+ */
+function registrarEntradasReversionVenta(PDO $pdo, array $lineas): void
+{
+    $ins = $pdo->prepare(
+        'INSERT INTO Inventario (fechaActualizacion, cantidad, idProducto, entrada, salida)
+         VALUES (NOW(), ?, ?, ?, 0)'
+    );
+    foreach ($lineas as $ln) {
+        $pid = (int) $ln['idProducto'];
+        $cant = (int) $ln['cantidad'];
+        if ($pid <= 0 || $cant <= 0) {
+            continue;
+        }
+        $ins->execute([$cant, $pid, $cant]);
+    }
+}
+
 function crear(PDO $pdo, array $in): array
 {
     $idTipo = isset($in['id_tipo_pago']) ? (int) $in['id_tipo_pago'] : 0;
@@ -197,6 +306,11 @@ function crear(PDO $pdo, array $in): array
 
     try {
         $pdo->beginTransaction();
+        $invErr = validarStockParaVenta($pdo, $detalles);
+        if ($invErr !== null) {
+            $pdo->rollBack();
+            return ['ok' => false, 'error' => $invErr];
+        }
         if (!empty($in['fecha'])) {
             $st = $pdo->prepare('INSERT INTO ventas (fecha, total, id_tipo_pago) VALUES (?, ?, ?)');
             $st->execute([(string) $in['fecha'], $total, $idTipo]);
@@ -206,6 +320,7 @@ function crear(PDO $pdo, array $in): array
         }
         $idVenta = (int) $pdo->lastInsertId();
         insertarLineas($pdo, $idVenta, $detalles);
+        registrarSalidasInventarioVenta($pdo, $detalles);
         $pdo->commit();
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
@@ -252,10 +367,18 @@ function actualizar(PDO $pdo, int $id, array $in): array
 
     try {
         $pdo->beginTransaction();
+        $lineasAnteriores = detalleLineas($pdo, $id);
+        registrarEntradasReversionVenta($pdo, $lineasAnteriores);
+        $invErr = validarStockParaVenta($pdo, $detalles);
+        if ($invErr !== null) {
+            $pdo->rollBack();
+            return ['ok' => false, 'error' => $invErr];
+        }
         $pdo->prepare('DELETE FROM detalle_venta WHERE id_venta = ?')->execute([$id]);
         $up = $pdo->prepare('UPDATE ventas SET fecha = ?, total = ?, id_tipo_pago = ? WHERE id_venta = ?');
         $up->execute([(string) $in['fecha'], $total, $idTipo, $id]);
         insertarLineas($pdo, $id, $detalles);
+        registrarSalidasInventarioVenta($pdo, $detalles);
         $pdo->commit();
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
@@ -270,6 +393,16 @@ function eliminar(PDO $pdo, int $id): array
 {
     try {
         $pdo->beginTransaction();
+        $lineas = detalleLineas($pdo, $id);
+        if ($lineas === []) {
+            $chk = $pdo->prepare('SELECT 1 FROM ventas WHERE id_venta = ?');
+            $chk->execute([$id]);
+            if (!$chk->fetch()) {
+                $pdo->rollBack();
+                return ['ok' => false, 'error' => 'Venta no encontrada'];
+            }
+        }
+        registrarEntradasReversionVenta($pdo, $lineas);
         $pdo->prepare('DELETE FROM detalle_venta WHERE id_venta = ?')->execute([$id]);
         $st = $pdo->prepare('DELETE FROM ventas WHERE id_venta = ?');
         $st->execute([$id]);
@@ -309,7 +442,9 @@ if ($method === 'GET') {
         }
         json_out(una($pdo, $id));
     }
-    json_out(listar($pdo));
+    $qId = isset($_GET['q']) ? trim((string) $_GET['q']) : '';
+    $fecha = isset($_GET['fecha']) ? trim((string) $_GET['fecha']) : '';
+    json_out(listar($pdo, $qId, $fecha));
 }
 
 if ($method === 'POST') {

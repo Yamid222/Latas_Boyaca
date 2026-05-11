@@ -34,6 +34,59 @@ async function readJson(res) {
 }
 
 let categoriasCache = [];
+let productosListaCache = [];
+
+function normBusq(s) {
+  return String(s ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function filtrarProductos(q) {
+  const nq = normBusq(q);
+  if (!nq) return productosListaCache;
+  return productosListaCache.filter((r) => {
+    const codigo = normBusq(r.codigoOEM || '');
+    const nombre = normBusq(r.nombre || '');
+    const idStr = normBusq(String(r.idProducto ?? ''));
+    return codigo.includes(nq) || nombre.includes(nq) || idStr.includes(nq);
+  });
+}
+
+function pintarProductos(rows) {
+  const tbody = document.getElementById('prodTablaBody');
+  const empty = document.getElementById('prodEmpty');
+  const buscarEmpty = document.getElementById('prodBuscarEmpty');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (buscarEmpty) buscarEmpty.hidden = true;
+  if (!productosListaCache.length) {
+    if (empty) empty.hidden = false;
+    return;
+  }
+  if (empty) empty.hidden = true;
+  if (!rows.length) {
+    if (buscarEmpty) buscarEmpty.hidden = false;
+    return;
+  }
+  rows.forEach((r) => {
+    const tr = document.createElement('tr');
+    const codigo = String(r.codigoOEM ?? '').trim() || String(r.idProducto ?? '');
+    tr.innerHTML = `
+        <td>${escapeHtml(codigo)}</td>
+        <td>${escapeHtml(r.nombre)}</td>
+        <td>${escapeHtml(r.marca || '—')}</td>
+        <td>${escapeHtml(r.nombreCategoria || r.categoria || '—')}</td>
+        <td>${money.format(Number(r.precioInicial) || 0)}</td>
+        <td class="compras-acciones">
+          <button type="button" class="btn btn-sm btn-primary-inline" data-pr-act="editar" data-pr-id="${r.idProducto}">Editar</button>
+          <button type="button" class="btn btn-sm btn-ghost" data-pr-act="eliminar" data-pr-id="${r.idProducto}">Eliminar</button>
+        </td>`;
+    tbody.appendChild(tr);
+  });
+}
 
 async function loadCategorias() {
   const res = await fetch(apiUrl('api/categorias.php'), { cache: 'no-store' });
@@ -59,37 +112,26 @@ function fillCategoriaSelect(id, selectedValue = '') {
 
 async function loadLista() {
   const tbody = document.getElementById('prodTablaBody');
-  const empty = document.getElementById('prodEmpty');
   const msg = document.getElementById('prodModuleMsg');
+  const buscarEmpty = document.getElementById('prodBuscarEmpty');
   if (!tbody) return;
   msg.hidden = true;
+  if (buscarEmpty) buscarEmpty.hidden = true;
+  productosListaCache = [];
   tbody.innerHTML = '<tr><td colspan="6">Cargando…</td></tr>';
   try {
     const res = await fetch(apiUrl('api/productos.php'), { cache: 'no-store' });
     const data = await readJson(res);
     if (!data.ok) throw new Error(data.error || 'Error al listar');
-    tbody.innerHTML = '';
-    if (!data.productos.length) {
-      empty.hidden = false;
-      return;
-    }
-    empty.hidden = true;
-    data.productos.forEach((r) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${r.idProducto}</td>
-        <td>${escapeHtml(r.nombre)}</td>
-        <td>${escapeHtml(r.marca || '—')}</td>
-        <td>${escapeHtml(r.nombreCategoria || r.categoria || '—')}</td>
-        <td>${money.format(Number(r.precioInicial) || 0)}</td>
-        <td class="compras-acciones">
-          <button type="button" class="btn btn-sm btn-primary-inline" data-pr-act="editar" data-pr-id="${r.idProducto}">Editar</button>
-          <button type="button" class="btn btn-sm btn-ghost" data-pr-act="eliminar" data-pr-id="${r.idProducto}">Eliminar</button>
-        </td>`;
-      tbody.appendChild(tr);
-    });
+    productosListaCache = Array.isArray(data.productos) ? data.productos : [];
+    const q = document.getElementById('prodBuscar')?.value ?? '';
+    pintarProductos(filtrarProductos(q));
   } catch (e) {
     tbody.innerHTML = '';
+    productosListaCache = [];
+    if (buscarEmpty) buscarEmpty.hidden = true;
+    const empty = document.getElementById('prodEmpty');
+    if (empty) empty.hidden = true;
     msg.textContent = e.message || String(e);
     msg.hidden = false;
   }
@@ -109,6 +151,20 @@ function closeModal(id) {
   m.setAttribute('aria-hidden', 'true');
 }
 
+function clearProdFormMsg(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = '';
+  el.hidden = true;
+}
+
+function showProdFormMsg(id, text) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.hidden = false;
+}
+
 export function initProductos() {
   const btnNuevo = document.getElementById('prodBtnNuevo');
   const formNuevo = document.getElementById('formProdNuevo');
@@ -119,12 +175,18 @@ export function initProductos() {
     if (e.detail?.id === 'productos') loadLista();
   });
 
+  document.getElementById('prodBuscar')?.addEventListener('input', () => {
+    const q = document.getElementById('prodBuscar')?.value ?? '';
+    pintarProductos(filtrarProductos(q));
+  });
+
   btnNuevo?.addEventListener('click', () => {
     loadCategorias()
       .then(() => {
         formNuevo?.reset();
         fillCategoriaSelect('prodNuevoCat');
         document.getElementById('prodNuevoPrecio').value = '';
+        clearProdFormMsg('prodFormNuevoMsg');
         openModal('modalProdNuevo');
       })
       .catch((err) => alert(err.message || String(err)));
@@ -133,13 +195,19 @@ export function initProductos() {
   document.querySelectorAll('#modalProdNuevo [data-close-modal], #modalProdEdit [data-close-modal], #modalProdEliminar [data-close-modal]').forEach((el) => {
     el.addEventListener('click', () => {
       const modal = el.closest('.lb-modal');
-      if (modal) closeModal(modal.id);
+      if (modal) {
+        if (modal.id === 'modalProdNuevo') clearProdFormMsg('prodFormNuevoMsg');
+        if (modal.id === 'modalProdEdit') clearProdFormMsg('prodFormEditMsg');
+        closeModal(modal.id);
+      }
     });
   });
 
   formNuevo?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    clearProdFormMsg('prodFormNuevoMsg');
     const payload = {
+      codigoOEM: document.getElementById('prodNuevoCodigo').value.trim(),
       nombre: document.getElementById('prodNuevoNombre').value.trim(),
       marca: document.getElementById('prodNuevoMarca').value.trim(),
       idCategoria: parseInt(document.getElementById('prodNuevoCat').value, 10) || 0,
@@ -153,18 +221,21 @@ export function initProductos() {
       });
       const data = await readJson(res);
       if (!data.ok) throw new Error(data.error || 'No se pudo guardar');
+      clearProdFormMsg('prodFormNuevoMsg');
       closeModal('modalProdNuevo');
       invalidateComprasCatalog();
       loadLista();
     } catch (err) {
-      alert(err.message || String(err));
+      showProdFormMsg('prodFormNuevoMsg', err.message || String(err));
     }
   });
 
   formEdit?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    clearProdFormMsg('prodFormEditMsg');
     const id = parseInt(document.getElementById('prodEditId').value, 10);
     const payload = {
+      codigoOEM: document.getElementById('prodEditCodigo').value.trim(),
       nombre: document.getElementById('prodEditNombre').value.trim(),
       marca: document.getElementById('prodEditMarca').value.trim(),
       idCategoria: parseInt(document.getElementById('prodEditCat').value, 10) || 0,
@@ -178,11 +249,12 @@ export function initProductos() {
       });
       const data = await readJson(res);
       if (!data.ok) throw new Error(data.error || 'No se pudo guardar');
+      clearProdFormMsg('prodFormEditMsg');
       closeModal('modalProdEdit');
       invalidateComprasCatalog();
       loadLista();
     } catch (err) {
-      alert(err.message || String(err));
+      showProdFormMsg('prodFormEditMsg', err.message || String(err));
     }
   });
 
@@ -219,10 +291,12 @@ export function initProductos() {
         if (!data.ok) throw new Error(data.error || 'Error');
         const r = data.producto;
         document.getElementById('prodEditId').value = String(r.idProducto);
+        document.getElementById('prodEditCodigo').value = r.codigoOEM || '';
         document.getElementById('prodEditNombre').value = r.nombre || '';
         document.getElementById('prodEditMarca').value = r.marca || '';
         fillCategoriaSelect('prodEditCat', r.idCategoria != null ? String(r.idCategoria) : '');
         document.getElementById('prodEditPrecio').value = r.precioInicial != null ? String(r.precioInicial) : '';
+        clearProdFormMsg('prodFormEditMsg');
         openModal('modalProdEdit');
       } catch (err) {
         alert(err.message || String(err));
@@ -231,7 +305,7 @@ export function initProductos() {
     if (act === 'eliminar') {
       document.getElementById('prodEliminarId').value = String(id);
       document.getElementById('prodEliminarMsg').textContent =
-        `¿Eliminar el producto #${id}? No debe aparecer en compras ni en inventario.`;
+        `¿Eliminar el producto con código ${id}? No debe aparecer en compras ni en inventario.`;
       openModal('modalProdEliminar');
     }
   });

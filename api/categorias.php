@@ -3,6 +3,23 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib.php';
 
+function tieneCodigoCategoria(PDO $pdo): bool
+{
+    $st = $pdo->query("SHOW COLUMNS FROM Categoria LIKE 'codigo'");
+    return (bool) $st->fetch();
+}
+
+function asegurarCodigoCategoria(PDO $pdo): void
+{
+    if (tieneCodigoCategoria($pdo)) {
+        return;
+    }
+    $pdo->exec("ALTER TABLE Categoria ADD COLUMN codigo VARCHAR(50) NULL AFTER idCategoria");
+    $pdo->exec("UPDATE Categoria SET codigo = CAST(idCategoria AS CHAR) WHERE codigo IS NULL OR codigo = ''");
+    $pdo->exec("ALTER TABLE Categoria MODIFY codigo VARCHAR(50) NOT NULL");
+    $pdo->exec("ALTER TABLE Categoria ADD UNIQUE KEY uq_categoria_codigo (codigo)");
+}
+
 function productoTieneIdCategoria(PDO $pdo): bool
 {
     $st = $pdo->query("SHOW COLUMNS FROM Producto LIKE 'idCategoria'");
@@ -11,13 +28,15 @@ function productoTieneIdCategoria(PDO $pdo): bool
 
 function listar(PDO $pdo): array
 {
-    $rows = $pdo->query('SELECT idCategoria, nombre FROM Categoria ORDER BY nombre')->fetchAll();
+    asegurarCodigoCategoria($pdo);
+    $rows = $pdo->query('SELECT idCategoria, codigo, nombre FROM Categoria ORDER BY nombre')->fetchAll();
     return ['ok' => true, 'categorias' => $rows];
 }
 
 function una(PDO $pdo, int $id): array
 {
-    $st = $pdo->prepare('SELECT idCategoria, nombre FROM Categoria WHERE idCategoria = ?');
+    asegurarCodigoCategoria($pdo);
+    $st = $pdo->prepare('SELECT idCategoria, codigo, nombre FROM Categoria WHERE idCategoria = ?');
     $st->execute([$id]);
     $row = $st->fetch();
     if (!$row) {
@@ -40,9 +59,25 @@ function validar(array $in): ?string
 
 function crear(PDO $pdo, array $in): array
 {
+    asegurarCodigoCategoria($pdo);
     $err = validar($in);
     if ($err) {
         return ['ok' => false, 'error' => $err];
+    }
+    $codigo = trim((string) ($in['codigo'] ?? ''));
+    if ($codigo === '') {
+        return ['ok' => false, 'error' => 'El código es obligatorio.'];
+    }
+    if (strlen($codigo) > 50) {
+        return ['ok' => false, 'error' => 'El código es demasiado largo.'];
+    }
+    if (!preg_match('/^[a-zA-Z0-9_-]+$/', $codigo)) {
+        return ['ok' => false, 'error' => 'El código solo permite letras, números, guion y guion bajo.'];
+    }
+    $dupCode = $pdo->prepare('SELECT idCategoria FROM Categoria WHERE LOWER(codigo) = LOWER(?)');
+    $dupCode->execute([$codigo]);
+    if ($dupCode->fetch()) {
+        return ['ok' => false, 'error' => 'El código ya existe. Ingrese uno diferente.'];
     }
     $nombre = trim((string) $in['nombre']);
     $st = $pdo->prepare('SELECT idCategoria FROM Categoria WHERE LOWER(nombre) = LOWER(?)');
@@ -50,8 +85,8 @@ function crear(PDO $pdo, array $in): array
     if ($st->fetch()) {
         return ['ok' => false, 'error' => 'La categoría ya existe.'];
     }
-    $ins = $pdo->prepare('INSERT INTO Categoria (nombre) VALUES (?)');
-    $ins->execute([$nombre]);
+    $ins = $pdo->prepare('INSERT INTO Categoria (codigo, nombre) VALUES (?, ?)');
+    $ins->execute([$codigo, $nombre]);
     return ['ok' => true, 'idCategoria' => (int) $pdo->lastInsertId()];
 }
 

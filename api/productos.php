@@ -12,12 +12,19 @@ function tieneIdCategoria(PDO $pdo): bool
     return (bool) $st->fetch();
 }
 
+function tieneCodigoOEM(PDO $pdo): bool
+{
+    $st = $pdo->query("SHOW COLUMNS FROM Producto LIKE 'codigoOEM'");
+    return (bool) $st->fetch();
+}
+
 function listar(PDO $pdo): array
 {
     if (tieneIdCategoria($pdo)) {
         $rows = $pdo->query(
             'SELECT
                 p.idProducto,
+                p.codigoOEM,
                 p.nombre,
                 p.marca,
                 p.categoria,
@@ -33,6 +40,7 @@ function listar(PDO $pdo): array
         $rows = $pdo->query(
             'SELECT
                 p.idProducto,
+                p.codigoOEM,
                 p.nombre,
                 p.marca,
                 p.categoria,
@@ -53,6 +61,7 @@ function uno(PDO $pdo, int $id): array
     $sql = tieneIdCategoria($pdo)
         ? 'SELECT
                 p.idProducto,
+                p.codigoOEM,
                 p.nombre,
                 p.marca,
                 p.categoria,
@@ -65,6 +74,7 @@ function uno(PDO $pdo, int $id): array
            WHERE p.idProducto = ?'
         : 'SELECT
                 p.idProducto,
+                p.codigoOEM,
                 p.nombre,
                 p.marca,
                 p.categoria,
@@ -86,6 +96,13 @@ function uno(PDO $pdo, int $id): array
 
 function validar(array $in): ?string
 {
+    $codigo = trim((string) ($in['codigoOEM'] ?? ''));
+    if ($codigo === '') {
+        return 'El código es obligatorio.';
+    }
+    if (strlen($codigo) > 50) {
+        return 'El código es demasiado largo.';
+    }
     $nombre = trim((string) ($in['nombre'] ?? ''));
     if ($nombre === '') {
         return 'El nombre es obligatorio.';
@@ -114,6 +131,14 @@ function crear(PDO $pdo, array $in): array
     if ($err) {
         return ['ok' => false, 'error' => $err];
     }
+    $codigo = trim((string) ($in['codigoOEM'] ?? ''));
+    if (tieneCodigoOEM($pdo)) {
+        $dupCod = $pdo->prepare('SELECT idProducto FROM Producto WHERE LOWER(codigoOEM) = LOWER(?)');
+        $dupCod->execute([$codigo]);
+        if ($dupCod->fetch()) {
+            return ['ok' => false, 'error' => 'El código del producto ya existe.'];
+        }
+    }
     $idCategoria = (int) ($in['idCategoria'] ?? 0);
     $precio = round((float) ($in['precioInicial'] ?? 0), 2);
     $stCat = $pdo->prepare('SELECT nombre FROM Categoria WHERE idCategoria = ?');
@@ -123,19 +148,42 @@ function crear(PDO $pdo, array $in): array
         return ['ok' => false, 'error' => 'Categoría no encontrada.'];
     }
     $st = $pdo->prepare(
-        tieneIdCategoria($pdo)
-            ? 'INSERT INTO Producto (nombre, marca, categoria, precioInicial, idCategoria)
-               VALUES (?, ?, ?, ?, ?)'
-            : 'INSERT INTO Producto (nombre, marca, categoria, precioInicial)
-               VALUES (?, ?, ?, ?)'
+        (tieneIdCategoria($pdo) && tieneCodigoOEM($pdo))
+            ? 'INSERT INTO Producto (codigoOEM, nombre, marca, categoria, precioInicial, idCategoria)
+               VALUES (?, ?, ?, ?, ?, ?)'
+            : (tieneIdCategoria($pdo)
+                ? 'INSERT INTO Producto (nombre, marca, categoria, precioInicial, idCategoria)
+                   VALUES (?, ?, ?, ?, ?)'
+                : (tieneCodigoOEM($pdo)
+                    ? 'INSERT INTO Producto (codigoOEM, nombre, marca, categoria, precioInicial)
+                       VALUES (?, ?, ?, ?, ?)'
+                    : 'INSERT INTO Producto (nombre, marca, categoria, precioInicial)
+                       VALUES (?, ?, ?, ?)'))
     );
-    if (tieneIdCategoria($pdo)) {
+    if (tieneIdCategoria($pdo) && tieneCodigoOEM($pdo)) {
+        $st->execute([
+            $codigo,
+            trim($in['nombre']),
+            trim((string) ($in['marca'] ?? '')) ?: null,
+            (string) $nombreCat,
+            $precio,
+            $idCategoria,
+        ]);
+    } elseif (tieneIdCategoria($pdo)) {
         $st->execute([
             trim($in['nombre']),
             trim((string) ($in['marca'] ?? '')) ?: null,
             (string) $nombreCat,
             $precio,
             $idCategoria,
+        ]);
+    } elseif (tieneCodigoOEM($pdo)) {
+        $st->execute([
+            $codigo,
+            trim($in['nombre']),
+            trim((string) ($in['marca'] ?? '')) ?: null,
+            (string) $nombreCat,
+            $precio,
         ]);
     } else {
         $st->execute([
@@ -157,6 +205,14 @@ function actualizar(PDO $pdo, int $id, array $in): array
     if ($err) {
         return ['ok' => false, 'error' => $err];
     }
+    $codigo = trim((string) ($in['codigoOEM'] ?? ''));
+    if (tieneCodigoOEM($pdo)) {
+        $dupCod = $pdo->prepare('SELECT idProducto FROM Producto WHERE LOWER(codigoOEM) = LOWER(?) AND idProducto <> ?');
+        $dupCod->execute([$codigo, $id]);
+        if ($dupCod->fetch()) {
+            return ['ok' => false, 'error' => 'El código del producto ya existe.'];
+        }
+    }
     $idCategoria = (int) ($in['idCategoria'] ?? 0);
     $precio = round((float) ($in['precioInicial'] ?? 0), 2);
     $stCat = $pdo->prepare('SELECT nombre FROM Categoria WHERE idCategoria = ?');
@@ -166,21 +222,48 @@ function actualizar(PDO $pdo, int $id, array $in): array
         return ['ok' => false, 'error' => 'Categoría no encontrada.'];
     }
     $st = $pdo->prepare(
-        tieneIdCategoria($pdo)
+        (tieneIdCategoria($pdo) && tieneCodigoOEM($pdo))
             ? 'UPDATE Producto
-               SET nombre = ?, marca = ?, categoria = ?, precioInicial = ?, idCategoria = ?
+               SET codigoOEM = ?, nombre = ?, marca = ?, categoria = ?, precioInicial = ?, idCategoria = ?
                WHERE idProducto = ?'
-            : 'UPDATE Producto
-               SET nombre = ?, marca = ?, categoria = ?, precioInicial = ?
-               WHERE idProducto = ?'
+            : (tieneIdCategoria($pdo)
+                ? 'UPDATE Producto
+                   SET nombre = ?, marca = ?, categoria = ?, precioInicial = ?, idCategoria = ?
+                   WHERE idProducto = ?'
+                : (tieneCodigoOEM($pdo)
+                    ? 'UPDATE Producto
+                       SET codigoOEM = ?, nombre = ?, marca = ?, categoria = ?, precioInicial = ?
+                       WHERE idProducto = ?'
+                    : 'UPDATE Producto
+                       SET nombre = ?, marca = ?, categoria = ?, precioInicial = ?
+                       WHERE idProducto = ?'))
     );
-    if (tieneIdCategoria($pdo)) {
+    if (tieneIdCategoria($pdo) && tieneCodigoOEM($pdo)) {
+        $st->execute([
+            $codigo,
+            trim($in['nombre']),
+            trim((string) ($in['marca'] ?? '')) ?: null,
+            (string) $nombreCat,
+            $precio,
+            $idCategoria,
+            $id,
+        ]);
+    } elseif (tieneIdCategoria($pdo)) {
         $st->execute([
             trim($in['nombre']),
             trim((string) ($in['marca'] ?? '')) ?: null,
             (string) $nombreCat,
             $precio,
             $idCategoria,
+            $id,
+        ]);
+    } elseif (tieneCodigoOEM($pdo)) {
+        $st->execute([
+            $codigo,
+            trim($in['nombre']),
+            trim((string) ($in['marca'] ?? '')) ?: null,
+            (string) $nombreCat,
+            $precio,
             $id,
         ]);
     } else {

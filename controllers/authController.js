@@ -8,8 +8,6 @@ const TITLES = {
   proveedores: ['Proveedores', 'Importadores y contacto'],
   compras: ['Compras', 'Órdenes y adquisiciones'],
   ventas: ['Ventas', 'Desempeño comercial'],
-  pedidos: ['Pedidos', 'Seguimiento de órdenes'],
-  perdidas: ['Pérdidas', 'Mermas y ajustes'],
   reportes: ['Reportes', 'Análisis y exportación'],
   configuracion: ['Configuración', 'Ajustes del sistema'],
 };
@@ -310,9 +308,21 @@ export function initAuth() {
     })
     .catch((err) => console.error('Ventas:', err));
 
+  import('../assets/js/reportes.js')
+    .then((m) => {
+      if (typeof m.initReportes === 'function') m.initReportes();
+    })
+    .catch((err) => console.error('Reportes:', err));
+
   import('../assets/js/tipoPago.js')
     .then((m) => {
       if (typeof m.initTipoPago === 'function') m.initTipoPago();
     })
     .catch((err) => console.error('Tipo pago:', err));
+
+  import('../assets/js/configuracion.js')
+    .then((m) => {
+      if (typeof m.initConfiguracion === 'function') m.initConfiguracion();
+    })
+    .catch((err) => console.error('Configuración:', err));
 }
