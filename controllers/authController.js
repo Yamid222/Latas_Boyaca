@@ -114,7 +114,7 @@ export function initAuth() {
     .then((m) => { if (typeof m.initConfiguracion==='function') m.initConfiguracion(); })
     .catch((e) => console.error('Configuración:', e));
 
-  import('../assets/js/cuentas.js?v=20260518_01')
+  import('../assets/js/cuentas.js?v=20260518_02')
     .then((m) => {
       if (typeof m.initCuentas      === 'function') m.initCuentas();
       if (typeof m.setCuentasUsuario === 'function') setCuentasUsuario = m.setCuentasUsuario;

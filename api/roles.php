@@ -87,12 +87,9 @@ if ($method === 'PUT') {
 
     if ($id === 0) lb_json(['ok' => false, 'error' => 'id requerido.'], 422);
 
-    // No se puede editar nombre/descripcion de roles de sistema
-    $essistema = (bool)$pdo->query("SELECT es_sistema FROM lb_rol WHERE id = $id")->fetchColumn();
-
     try {
         $pdo->beginTransaction();
-        if (!$essistema && $nombre !== '') {
+        if ($nombre !== '') {
             $pdo->prepare('UPDATE lb_rol SET nombre=?, descripcion=? WHERE id=?')
                 ->execute([$nombre, $descripcion ?: null, $id]);
         }

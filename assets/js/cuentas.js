@@ -146,7 +146,7 @@ function abrirEditUsuario(id) {
   const usuarios = Array.from($('usuariosBody').querySelectorAll('tr')).map((tr, i) => tr);
   fetch('api/usuarios.php').then(r => r.json()).then(data => {
     if (!data.ok) return;
-    const u = data.usuarios.find(x => x.id === id);
+    const u = data.usuarios.find(x => x.id === +id);
     if (!u) return;
     editingUserId = id;
     $('editUsuTitulo').textContent = 'Editar usuario';
@@ -231,11 +231,11 @@ async function cargarRoles() {
 
   tbody.innerHTML = res.roles.map(r => `
     <tr>
-      <td>${r.nombre}${r.es_sistema ? ' <span class="badge ok" title="Rol de sistema">Sistema</span>' : ''}</td>
+      <td>${r.nombre}</td>
       <td>${r.descripcion || '—'}</td>
       <td>${r.permisos.length}</td>
       <td>
-        <button class="btn-sm btn-outline" onclick="abrirEditRol(${r.id})">Editar permisos</button>
+        <button class="btn-sm btn-outline" onclick="abrirEditRol(${r.id})">Editar</button>
         ${!r.es_sistema ? `<button class="btn-sm btn-danger" onclick="eliminarRol(${r.id})">Eliminar</button>` : ''}
       </td>
     </tr>`).join('');
@@ -268,13 +268,13 @@ function abrirNuevoRol() {
 
 async function abrirEditRol(id) {
   await cargarPermisos();
-  const rol = rolesCache.find(r => r.id === id);
+  const rol = rolesCache.find(r => r.id === +id);
   if (!rol) return;
-  editingRolId = id;
+  editingRolId = rol.id;
   $('editRolTitulo').textContent = 'Editar rol: ' + rol.nombre;
   $('editRolNombre').value       = rol.nombre;
   $('editRolDesc').value         = rol.descripcion || '';
-  $('editRolNombreRow').style.display = rol.es_sistema ? 'none' : '';
+  $('editRolNombreRow').style.display = '';
   buildCheckboxesPermisos(rol.permisos);
   showMsg($('editRolMsg'), '');
   $('editRolModal').classList.add('is-open');
