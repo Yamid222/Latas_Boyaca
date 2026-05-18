@@ -14,20 +14,6 @@ const money = new Intl.NumberFormat('es-CO', {
   maximumFractionDigits: 0,
 });
 
-function fmtEstado(estado) {
-  if (estado === 'en_transito') return 'Pendiente';
-  const map = {
-    pendiente: 'Pendiente',
-    recibida: 'Recibida',
-  };
-  return map[estado] || estado;
-}
-
-function badgeClass(estado) {
-  if (estado === 'recibida') return 'ok';
-  return 'pend';
-}
-
 let catalogoCache = null;
 
 window.addEventListener('lb-invalidate-compras-catalog', () => {
@@ -297,7 +283,7 @@ async function loadLista() {
   const qs = params.toString();
   const url = qs ? `${apiUrl('api/compras.php')}?${qs}` : apiUrl('api/compras.php');
 
-  tbody.innerHTML = '<tr><td colspan="6">Cargando…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="5">Cargando…</td></tr>';
   try {
     const res = await fetch(url, { cache: 'no-store' });
     const data = await res.json();
@@ -316,18 +302,15 @@ async function loadLista() {
     data.compras.forEach((c) => {
       const total = Number(c.total);
       const tr = document.createElement('tr');
-      const bc = badgeClass(c.estado);
-      const canRecibir = c.estado !== 'recibida';
       tr.innerHTML = `
         <td>${c.idCompra}</td>
         <td>${escapeHtml(c.nombreImportador)}</td>
-        <td><span class="badge ${bc}">${fmtEstado(c.estado)}</span></td>
         <td>${money.format(total)}</td>
         <td>${c.fecha || '—'}</td>
         <td class="compras-acciones">
           <button type="button" class="btn btn-sm btn-ghost" data-act="ver" data-id="${c.idCompra}">Ver detalle</button>
           <button type="button" class="btn btn-sm btn-primary-inline" data-act="editar" data-id="${c.idCompra}">Editar</button>
-          <button type="button" class="btn btn-sm btn-recibir" data-act="recibir" data-id="${c.idCompra}" ${canRecibir ? '' : 'disabled'}>Recibir</button>
+          <button type="button" class="btn btn-sm btn-danger-inline" data-act="eliminar" data-id="${c.idCompra}">Eliminar</button>
         </td>`;
       tbody.appendChild(tr);
     });
@@ -395,8 +378,6 @@ function showCompraEditAlert(text) {
 
 function closeCompraEditarPanel() {
   clearCompraEditAlert();
-  const est = document.getElementById('compraEditEstado');
-  if (est) est.disabled = false;
   const btnDel = document.getElementById('comprasBtnEliminarEdit');
   if (btnDel) btnDel.disabled = false;
   setComprasPanelOpen(COMPRAS_PANEL_EDITAR, false, null);
@@ -428,12 +409,34 @@ export async function initCompras() {
   const impEditId = document.getElementById('compraEditImportador');
   const impEditBuscar = document.getElementById('compraEditImportadorBuscar');
 
-  ['modalCompraDetalle', 'modalCompraRecibir'].forEach((mid) => {
+  ['modalCompraDetalle', 'modalCompraEliminar'].forEach((mid) => {
     const modal = document.getElementById(mid);
     if (!modal) return;
     modal.querySelectorAll('[data-close-modal]').forEach((el) => {
       el.addEventListener('click', () => closeModal(mid));
     });
+  });
+
+  document.getElementById('compraBtnConfirmEliminar')?.addEventListener('click', async () => {
+    const id = parseInt(document.getElementById('compraEliminarId').value, 10);
+    if (!id) return;
+    try {
+      const res = await fetch(apiUrl(`api/compras.php?action=delete&id=${id}`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'No se pudo eliminar');
+      closeModal('modalCompraEliminar');
+      const editId = parseInt(document.getElementById('compraEditId')?.value ?? '', 10);
+      if (editId === id) closeCompraEditarPanel();
+      loadLista();
+      window.dispatchEvent(new CustomEvent('lb-stock-changed'));
+    } catch (err) {
+      closeModal('modalCompraEliminar');
+      alert(err.message || String(err));
+    }
   });
 
   document.getElementById('comprasBtnCerrarNueva')?.addEventListener('click', () => closeCompraNuevaPanel());
@@ -495,8 +498,6 @@ export async function initCompras() {
       fillImportadorPicker(impSel, impTxt, cat.importadores, null);
       const f = document.getElementById('compraNuevaFecha');
       if (f) f.value = new Date().toISOString().slice(0, 10);
-      const estN = document.getElementById('compraNuevaEstado');
-      if (estN) estN.value = 'pendiente';
       tb.innerHTML = '';
       addFila(tb, cat.productos, null);
       recalcTotalForm(formNueva);
@@ -526,7 +527,6 @@ export async function initCompras() {
     e.preventDefault();
     const imp = document.getElementById('compraNuevaImportador').value;
     const fecha = document.getElementById('compraNuevaFecha').value;
-    const estado = document.getElementById('compraNuevaEstado').value;
     const detalles = [];
     document.querySelectorAll('#comprasNuevaFilas tr').forEach((tr) => {
       const idProducto = parseInt(tr.querySelector('.compras-sel-producto').value, 10);
@@ -549,43 +549,18 @@ export async function initCompras() {
       const res = await fetch(apiUrl('api/compras.php'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idImportador: parseInt(imp, 10), fecha, estado, detalles }),
+        body: JSON.stringify({ idImportador: parseInt(imp, 10), fecha, detalles }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'No se pudo crear');
       closeCompraNuevaPanel();
       loadLista();
+      window.dispatchEvent(new CustomEvent('lb-stock-changed'));
     } catch (err) {
       alert(err.message || String(err));
     }
   });
 
-  document.getElementById('comprasBtnEliminarEdit')?.addEventListener('click', async () => {
-    const idCompra = parseInt(document.getElementById('compraEditId').value, 10);
-    if (!idCompra) return;
-    clearCompraEditAlert();
-    if (
-      !confirm(
-        `¿Eliminar la compra #${idCompra}? Si ya estaba recibida, se restará del inventario las cantidades de esa orden.`,
-      )
-    ) {
-      return;
-    }
-    try {
-      const res = await fetch(apiUrl(`api/compras.php?action=delete&id=${idCompra}`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'No se pudo eliminar');
-      clearCompraEditAlert();
-      closeCompraEditarPanel();
-      loadLista();
-    } catch (err) {
-      showCompraEditAlert(err.message || String(err));
-    }
-  });
 
   formEdit?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -593,7 +568,6 @@ export async function initCompras() {
     const idCompra = parseInt(document.getElementById('compraEditId').value, 10);
     const imp = document.getElementById('compraEditImportador').value;
     const fecha = document.getElementById('compraEditFecha').value;
-    const estado = document.getElementById('compraEditEstado').value;
     const detalles = [];
     document.querySelectorAll('#comprasEditFilas tr').forEach((tr) => {
       const idProducto = parseInt(tr.querySelector('.compras-sel-producto').value, 10);
@@ -619,7 +593,6 @@ export async function initCompras() {
         body: JSON.stringify({
           idImportador: parseInt(imp, 10),
           fecha,
-          estado,
           detalles,
         }),
       });
@@ -628,6 +601,7 @@ export async function initCompras() {
       clearCompraEditAlert();
       closeCompraEditarPanel();
       loadLista();
+      window.dispatchEvent(new CustomEvent('lb-stock-changed'));
     } catch (err) {
       showCompraEditAlert(err.message || String(err));
     }
@@ -644,6 +618,13 @@ export async function initCompras() {
     if (!btn) return;
     const id = parseInt(btn.dataset.id, 10);
     const act = btn.dataset.act;
+    if (act === 'eliminar') {
+      document.getElementById('compraEliminarId').value = String(id);
+      document.getElementById('compraEliminarMsg').textContent =
+        `¿Eliminar la compra #${id}? Se revertirá el inventario de los productos incluidos.`;
+      openModal('modalCompraEliminar');
+      return;
+    }
     if (act === 'ver') {
       try {
         const res = await fetch(apiUrl(`api/compras.php?id=${id}`), { cache: 'no-store' });
@@ -652,7 +633,7 @@ export async function initCompras() {
         const c = data.compra;
         document.getElementById('detalleCompraTitulo').textContent = `Compra #${c.idCompra}`;
         document.getElementById('detalleCompraMeta').innerHTML = `
-          <strong>${escapeHtml(c.nombreImportador)}</strong> · ${fmtEstado(c.estado)} · Fecha: ${c.fecha || '—'}`;
+          <strong>${escapeHtml(c.nombreImportador)}</strong> · Fecha: ${c.fecha || '—'}`;
         const body = document.getElementById('comprasDetalleCuerpo');
         body.innerHTML = '';
         data.detalles.forEach((d) => {
@@ -681,11 +662,6 @@ export async function initCompras() {
         const impTxt = document.getElementById('compraEditImportadorBuscar');
         fillImportadorPicker(impSel, impTxt, cat.importadores, data.compra.idImportador);
         document.getElementById('compraEditFecha').value = data.compra.fecha || '';
-        const estSel = document.getElementById('compraEditEstado');
-        let estEdit = data.compra.estado;
-        if (estEdit === 'en_transito') estEdit = 'pendiente';
-        estSel.value = estEdit;
-        estSel.disabled = data.compra.estado === 'recibida';
         const tb = document.getElementById('comprasEditFilas');
         tb.innerHTML = '';
         data.detalles.forEach((d) => {
@@ -705,28 +681,6 @@ export async function initCompras() {
       } catch (err) {
         alert(err.message || String(err));
       }
-    }
-    if (act === 'recibir') {
-      document.getElementById('recibirCompraId').value = String(id);
-      document.getElementById('recibirCompraMsg').textContent = `¿Confirma recepción de la compra #${id}? Se actualizará el stock y el inventario.`;
-      openModal('modalCompraRecibir');
-    }
-  });
-
-  document.getElementById('comprasBtnConfirmarRecibir')?.addEventListener('click', async () => {
-    const id = parseInt(document.getElementById('recibirCompraId').value, 10);
-    try {
-      const res = await fetch(apiUrl(`api/compras.php?action=recibir&id=${id}`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'No se pudo recibir');
-      closeModal('modalCompraRecibir');
-      loadLista();
-    } catch (err) {
-      alert(err.message || String(err));
     }
   });
 }

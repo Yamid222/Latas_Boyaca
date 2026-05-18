@@ -26,6 +26,10 @@ window.addEventListener('lb-invalidate-ventas-catalog', () => {
   catalogoCache = null;
 });
 
+window.addEventListener('lb-stock-changed', () => {
+  catalogoCache = null;
+});
+
 async function fetchCatalogo() {
   if (catalogoCache) return catalogoCache;
   const res = await fetch(`${apiUrl('api/ventas.php')}?catalog=1`, { cache: 'no-store' });
@@ -597,16 +601,22 @@ export function initVentas() {
         const tb = document.getElementById('ventasEditFilas');
         tb.innerHTML = '';
         const dets = data.detalles || [];
+        // Suma las cantidades de esta venta al stock mostrado: al editar, esos productos están "disponibles"
+        const prodsAjustados = cat.productos.map((p) => {
+          const d = dets.find((det) => String(det.idProducto) === String(p.idProducto));
+          if (!d) return p;
+          return { ...p, stock: (Number(p.stock) || 0) + Number(d.cantidad) };
+        });
         if (dets.length) {
           dets.forEach((d) =>
-            addFilaVenta(tb, cat.productos, {
+            addFilaVenta(tb, prodsAjustados, {
               idProducto: d.idProducto,
               cantidad: d.cantidad,
               precio: d.precio,
             })
           );
         } else {
-          addFilaVenta(tb, cat.productos, null);
+          addFilaVenta(tb, prodsAjustados, null);
         }
         recalcTotalVentaForm(formEdit);
         openModal('modalVentaEdit');

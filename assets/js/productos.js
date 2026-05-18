@@ -33,26 +33,51 @@ async function readJson(res) {
   }
 }
 
-let categoriasCache = [];
-let productosListaCache = [];
-
 function normBusq(s) {
   return String(s ?? '')
     .trim()
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+    .replace(/[̀-ͯ]/g, '');
 }
 
-function filtrarProductos(q) {
-  const nq = normBusq(q);
-  if (!nq) return productosListaCache;
-  return productosListaCache.filter((r) => {
-    const codigo = normBusq(r.codigoOEM || '');
-    const nombre = normBusq(r.nombre || '');
-    const idStr = normBusq(String(r.idProducto ?? ''));
-    return codigo.includes(nq) || nombre.includes(nq) || idStr.includes(nq);
-  });
+let categoriasCache = [];
+let productosListaCache = [];
+
+function aplicarFiltrosProd() {
+  const q = normBusq(document.getElementById('prodBuscar')?.value ?? '');
+  const cat = normBusq(document.getElementById('prodFiltroCat')?.value ?? '');
+  const cond = normBusq(document.getElementById('prodFiltroCond')?.value ?? '');
+
+  let lista = productosListaCache;
+  if (q) {
+    lista = lista.filter((r) => {
+      return normBusq(r.codigoOEM || '').includes(q) ||
+             normBusq(r.modelo || r.nombre || '').includes(q) ||
+             normBusq(r.marca || '').includes(q) ||
+             normBusq(r.lineaVehiculo || '').includes(q) ||
+             normBusq(String(r.idProducto ?? '')).includes(q);
+    });
+  }
+  if (cat) {
+    lista = lista.filter((r) => normBusq(r.categoria || '').includes(cat));
+  }
+  if (cond) {
+    lista = lista.filter((r) => {
+      const pc = r.condicionProducto === 'segunda mano' ? 'segunda mano' : 'nuevo';
+      return pc.includes(cond);
+    });
+  }
+
+  pintarProductos(lista);
+}
+
+function popularProdCatList() {
+  const cats = [...new Set(productosListaCache.map((r) => r.categoria).filter(Boolean))].sort();
+  const listaCat = document.getElementById('prodCatList');
+  if (listaCat) {
+    listaCat.innerHTML = cats.map((c) => `<option value="${escapeHtml(c)}">`).join('');
+  }
 }
 
 function pintarProductos(rows) {
@@ -74,13 +99,17 @@ function pintarProductos(rows) {
   rows.forEach((r) => {
     const tr = document.createElement('tr');
     const codigo = String(r.codigoOEM ?? '').trim() || String(r.idProducto ?? '');
+    const condicion = r.condicionProducto === 'segunda mano' ? 'Segunda mano' : 'Nuevo';
     tr.innerHTML = `
         <td>${escapeHtml(codigo)}</td>
-        <td>${escapeHtml(r.nombre)}</td>
+        <td>${escapeHtml(r.modelo || r.nombre || '—')}</td>
         <td>${escapeHtml(r.marca || '—')}</td>
-        <td>${escapeHtml(r.nombreCategoria || r.categoria || '—')}</td>
+        <td>${escapeHtml(r.categoria || '—')}</td>
+        <td>${escapeHtml(r.lineaVehiculo || '—')}</td>
         <td>${money.format(Number(r.precioInicial) || 0)}</td>
+        <td>${escapeHtml(condicion)}</td>
         <td class="compras-acciones">
+          <button type="button" class="btn btn-sm btn-ghost" data-pr-act="descripcion" data-pr-id="${r.idProducto}">Descripción</button>
           <button type="button" class="btn btn-sm btn-primary-inline" data-pr-act="editar" data-pr-id="${r.idProducto}">Editar</button>
           <button type="button" class="btn btn-sm btn-ghost" data-pr-act="eliminar" data-pr-id="${r.idProducto}">Eliminar</button>
         </td>`;
@@ -110,6 +139,19 @@ function fillCategoriaSelect(id, selectedValue = '') {
   }
 }
 
+function fillCategoriaNombreSelect(id, selectedNombre = '') {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Sin categoría</option>';
+  categoriasCache.forEach((c) => {
+    const opt = document.createElement('option');
+    opt.value = c.nombre;
+    opt.textContent = c.nombre;
+    sel.appendChild(opt);
+  });
+  if (selectedNombre) sel.value = selectedNombre;
+}
+
 async function loadLista() {
   const tbody = document.getElementById('prodTablaBody');
   const msg = document.getElementById('prodModuleMsg');
@@ -118,14 +160,14 @@ async function loadLista() {
   msg.hidden = true;
   if (buscarEmpty) buscarEmpty.hidden = true;
   productosListaCache = [];
-  tbody.innerHTML = '<tr><td colspan="6">Cargando…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8">Cargando…</td></tr>';
   try {
     const res = await fetch(apiUrl('api/productos.php'), { cache: 'no-store' });
     const data = await readJson(res);
     if (!data.ok) throw new Error(data.error || 'Error al listar');
     productosListaCache = Array.isArray(data.productos) ? data.productos : [];
-    const q = document.getElementById('prodBuscar')?.value ?? '';
-    pintarProductos(filtrarProductos(q));
+    popularProdCatList();
+    aplicarFiltrosProd();
   } catch (e) {
     tbody.innerHTML = '';
     productosListaCache = [];
@@ -175,24 +217,25 @@ export function initProductos() {
     if (e.detail?.id === 'productos') loadLista();
   });
 
-  document.getElementById('prodBuscar')?.addEventListener('input', () => {
-    const q = document.getElementById('prodBuscar')?.value ?? '';
-    pintarProductos(filtrarProductos(q));
+  ['prodBuscar', 'prodFiltroCat', 'prodFiltroCond'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('input', aplicarFiltrosProd);
   });
 
-  btnNuevo?.addEventListener('click', () => {
-    loadCategorias()
-      .then(() => {
-        formNuevo?.reset();
-        fillCategoriaSelect('prodNuevoCat');
-        document.getElementById('prodNuevoPrecio').value = '';
-        clearProdFormMsg('prodFormNuevoMsg');
-        openModal('modalProdNuevo');
-      })
-      .catch((err) => alert(err.message || String(err)));
+  btnNuevo?.addEventListener('click', async () => {
+    try {
+      await loadCategorias();
+      formNuevo?.reset();
+      fillCategoriaNombreSelect('prodNuevoCat');
+      clearProdFormMsg('prodFormNuevoMsg');
+      openModal('modalProdNuevo');
+    } catch (err) {
+      alert(err.message || String(err));
+    }
   });
 
-  document.querySelectorAll('#modalProdNuevo [data-close-modal], #modalProdEdit [data-close-modal], #modalProdEliminar [data-close-modal]').forEach((el) => {
+  document.querySelectorAll(
+    '#modalProdNuevo [data-close-modal], #modalProdEdit [data-close-modal], #modalProdEliminar [data-close-modal], #modalProdDesc [data-close-modal]'
+  ).forEach((el) => {
     el.addEventListener('click', () => {
       const modal = el.closest('.lb-modal');
       if (modal) {
@@ -208,10 +251,13 @@ export function initProductos() {
     clearProdFormMsg('prodFormNuevoMsg');
     const payload = {
       codigoOEM: document.getElementById('prodNuevoCodigo').value.trim(),
-      nombre: document.getElementById('prodNuevoNombre').value.trim(),
       marca: document.getElementById('prodNuevoMarca').value.trim(),
-      idCategoria: parseInt(document.getElementById('prodNuevoCat').value, 10) || 0,
+      lineaVehiculo: document.getElementById('prodNuevoLinea').value.trim(),
+      categoria: document.getElementById('prodNuevoCat').value,
+      modelo: document.getElementById('prodNuevoModelo').value.trim(),
+      descripcion: document.getElementById('prodNuevoDesc').value.trim(),
       precioInicial: parseFloat(document.getElementById('prodNuevoPrecio').value) || 0,
+      condicionProducto: document.getElementById('prodNuevoEstado').value,
     };
     try {
       const res = await fetch(apiUrl('api/productos.php'), {
@@ -224,6 +270,8 @@ export function initProductos() {
       clearProdFormMsg('prodFormNuevoMsg');
       closeModal('modalProdNuevo');
       invalidateComprasCatalog();
+      window.dispatchEvent(new CustomEvent('lb-invalidate-ventas-catalog'));
+      window.dispatchEvent(new CustomEvent('lb-stock-changed'));
       loadLista();
     } catch (err) {
       showProdFormMsg('prodFormNuevoMsg', err.message || String(err));
@@ -236,10 +284,13 @@ export function initProductos() {
     const id = parseInt(document.getElementById('prodEditId').value, 10);
     const payload = {
       codigoOEM: document.getElementById('prodEditCodigo').value.trim(),
-      nombre: document.getElementById('prodEditNombre').value.trim(),
       marca: document.getElementById('prodEditMarca').value.trim(),
-      idCategoria: parseInt(document.getElementById('prodEditCat').value, 10) || 0,
+      lineaVehiculo: document.getElementById('prodEditLinea').value.trim(),
+      categoria: document.getElementById('prodEditCat').value,
+      modelo: document.getElementById('prodEditModelo').value.trim(),
+      descripcion: document.getElementById('prodEditDesc').value.trim(),
       precioInicial: parseFloat(document.getElementById('prodEditPrecio').value) || 0,
+      condicionProducto: document.getElementById('prodEditEstado').value,
     };
     try {
       const res = await fetch(apiUrl(`api/productos.php?action=update&id=${id}`), {
@@ -252,6 +303,8 @@ export function initProductos() {
       clearProdFormMsg('prodFormEditMsg');
       closeModal('modalProdEdit');
       invalidateComprasCatalog();
+      window.dispatchEvent(new CustomEvent('lb-invalidate-ventas-catalog'));
+      window.dispatchEvent(new CustomEvent('lb-stock-changed'));
       loadLista();
     } catch (err) {
       showProdFormMsg('prodFormEditMsg', err.message || String(err));
@@ -270,6 +323,8 @@ export function initProductos() {
       if (!data.ok) throw new Error(data.error || 'No se pudo eliminar');
       closeModal('modalProdEliminar');
       invalidateComprasCatalog();
+      window.dispatchEvent(new CustomEvent('lb-invalidate-ventas-catalog'));
+      window.dispatchEvent(new CustomEvent('lb-stock-changed'));
       loadLista();
     } catch (err) {
       alert(err.message || String(err));
@@ -281,9 +336,21 @@ export function initProductos() {
     if (!btn) return;
     const id = parseInt(btn.dataset.prId, 10);
     const act = btn.dataset.prAct;
+
+    if (act === 'descripcion') {
+      const r = productosListaCache.find((p) => String(p.idProducto) === String(id));
+      if (r) {
+        const titulo = [r.codigoOEM, r.marca, r.modelo].filter(Boolean).join(' · ');
+        document.getElementById('prodDescTitulo').textContent = titulo || `Producto #${id}`;
+        document.getElementById('prodDescTexto').textContent = r.descripcion || '(Sin descripción)';
+        openModal('modalProdDesc');
+      }
+      return;
+    }
+
     if (act === 'editar') {
       try {
-        const [resProd, _] = await Promise.all([
+        const [resProd] = await Promise.all([
           fetch(apiUrl(`api/productos.php?id=${id}`), { cache: 'no-store' }),
           loadCategorias(),
         ]);
@@ -292,10 +359,13 @@ export function initProductos() {
         const r = data.producto;
         document.getElementById('prodEditId').value = String(r.idProducto);
         document.getElementById('prodEditCodigo').value = r.codigoOEM || '';
-        document.getElementById('prodEditNombre').value = r.nombre || '';
         document.getElementById('prodEditMarca').value = r.marca || '';
-        fillCategoriaSelect('prodEditCat', r.idCategoria != null ? String(r.idCategoria) : '');
+        document.getElementById('prodEditLinea').value = r.lineaVehiculo || '';
+        fillCategoriaNombreSelect('prodEditCat', r.categoria || '');
+        document.getElementById('prodEditModelo').value = r.modelo || r.nombre || '';
+        document.getElementById('prodEditDesc').value = r.descripcion || '';
         document.getElementById('prodEditPrecio').value = r.precioInicial != null ? String(r.precioInicial) : '';
+        document.getElementById('prodEditEstado').value = r.condicionProducto || '';
         clearProdFormMsg('prodFormEditMsg');
         openModal('modalProdEdit');
       } catch (err) {

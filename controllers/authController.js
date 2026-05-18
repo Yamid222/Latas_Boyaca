@@ -12,99 +12,6 @@ const TITLES = {
   configuracion: ['Configuración', 'Ajustes del sistema'],
 };
 
-let chartVentas = null;
-let chartCats = null;
-
-function getChartColors() {
-  const muted = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#64748b';
-  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#2563eb';
-  const grid = getComputedStyle(document.documentElement).getPropertyValue('--chart-grid').trim() || 'rgba(148,163,184,0.2)';
-  return { muted, accent, grid };
-}
-
-function destroyCharts() {
-  if (chartVentas) {
-    chartVentas.destroy();
-    chartVentas = null;
-  }
-  if (chartCats) {
-    chartCats.destroy();
-    chartCats = null;
-  }
-}
-
-function initCharts() {
-  if (typeof Chart === 'undefined') return;
-  destroyCharts();
-  const { muted, accent, grid } = getChartColors();
-
-  const ctx1 = document.getElementById('chartVentas');
-  const ctx2 = document.getElementById('chartCategorias');
-  if (!ctx1 || !ctx2) return;
-
-  const ctx = ctx1.getContext('2d');
-  const grad = ctx.createLinearGradient(0, 0, 0, 280);
-  let r = 37;
-  let gch = 99;
-  let b = 235;
-  const hex = accent && accent.startsWith('#') ? accent : '#2563eb';
-  if (/^#[0-9A-Fa-f]{6}$/.test(hex)) {
-    r = parseInt(hex.slice(1, 3), 16);
-    gch = parseInt(hex.slice(3, 5), 16);
-    b = parseInt(hex.slice(5, 7), 16);
-  }
-  grad.addColorStop(0, `rgba(${r},${gch},${b},0.22)`);
-  grad.addColorStop(1, `rgba(${r},${gch},${b},0)`);
-
-  chartVentas = new Chart(ctx1, {
-    type: 'line',
-    data: {
-      labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
-      datasets: [
-        {
-          label: 'Ventas (millones COP)',
-          data: [4.2, 5.1, 4.8, 6.2, 5.9, 7.1, 6.4],
-          borderColor: accent,
-          backgroundColor: grad,
-          fill: true,
-          tension: 0.35,
-          pointRadius: 4,
-          pointHoverRadius: 6,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { grid: { color: grid }, ticks: { color: muted } },
-        y: { grid: { color: grid }, ticks: { color: muted } },
-      },
-    },
-  });
-
-  chartCats = new Chart(ctx2, {
-    type: 'doughnut',
-    data: {
-      labels: ['Bebidas', 'Envases', 'Accesorios', 'Otros'],
-      datasets: [
-        {
-          data: [42, 28, 18, 12],
-          backgroundColor: ['#2563eb', '#059669', '#d97706', '#64748b'],
-          borderWidth: 0,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'bottom', labels: { color: muted, boxWidth: 12, padding: 16 } },
-      },
-    },
-  });
-}
 
 function setTheme(html, dark, iconSun, iconMoon) {
   if (dark) {
@@ -118,11 +25,7 @@ function setTheme(html, dark, iconSun, iconMoon) {
     iconSun.style.display = 'block';
     iconMoon.style.display = 'none';
   }
-  if (chartVentas || chartCats) {
-    destroyCharts();
-    const dash = document.getElementById('view-dashboard');
-    if (dash && dash.classList.contains('is-active')) initCharts();
-  }
+  window.dispatchEvent(new CustomEvent('lb-theme-changed'));
 }
 
 function showView(id, pageTitle, nav) {
@@ -185,11 +88,6 @@ export function initAuth() {
     showView(id, pageTitle, nav);
     window.dispatchEvent(new CustomEvent('lb-view', { detail: { id } }));
     closeMobileMenu();
-    if (id === 'dashboard') {
-      requestAnimationFrame(() => initCharts());
-    } else {
-      destroyCharts();
-    }
   }
 
   function clearLoginError() {
@@ -200,7 +98,6 @@ export function initAuth() {
   }
 
   function logout() {
-    destroyCharts();
     appShell.classList.remove('is-visible');
     appShell.setAttribute('aria-hidden', 'true');
     loginScreen.classList.remove('is-hidden');
@@ -272,7 +169,13 @@ export function initAuth() {
     if (window.innerWidth > 900) closeMobileMenu();
   });
 
-  import('../assets/js/compras.js')
+  import('../assets/js/dashboard.js?v=20260517_01')
+    .then((m) => {
+      if (typeof m.initDashboard === 'function') m.initDashboard();
+    })
+    .catch((err) => console.error('Dashboard:', err));
+
+  import('../assets/js/compras.js?v=20260517_03')
     .then((m) => {
       if (typeof m.initCompras === 'function') m.initCompras();
     })
@@ -284,7 +187,7 @@ export function initAuth() {
     })
     .catch((err) => console.error('Proveedores:', err));
 
-  import('../assets/js/productos.js')
+  import('../assets/js/productos.js?v=20260517_04')
     .then((m) => {
       if (typeof m.initProductos === 'function') m.initProductos();
     })
@@ -296,19 +199,19 @@ export function initAuth() {
     })
     .catch((err) => console.error('Categorías:', err));
 
-  import('../assets/js/inventario.js')
+  import('../assets/js/inventario.js?v=20260517_03')
     .then((m) => {
       if (typeof m.initInventario === 'function') m.initInventario();
     })
     .catch((err) => console.error('Inventario:', err));
 
-  import('../assets/js/ventas.js')
+  import('../assets/js/ventas.js?v=20260517_02')
     .then((m) => {
       if (typeof m.initVentas === 'function') m.initVentas();
     })
     .catch((err) => console.error('Ventas:', err));
 
-  import('../assets/js/reportes.js')
+  import('../assets/js/reportes.js?v=20260517_04')
     .then((m) => {
       if (typeof m.initReportes === 'function') m.initReportes();
     })

@@ -1178,3 +1178,45 @@ input[type="date"].compras-control {
 #comprasTabla tbody tr:last-child td {
   border-bottom: none;
 }
+
+/* ─── Módulo Reportes: tabs ─────────────────────────────── */
+.rep-tabs {
+  display: flex;
+  gap: .25rem;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.rep-tabs::-webkit-scrollbar { display: none; }
+
+.rep-tab {
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  padding: .55rem 1.05rem;
+  font-family: var(--font);
+  font-size: .875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  transition: color var(--transition), border-color var(--transition), background var(--transition);
+}
+.rep-tab:hover { color: var(--text); background: var(--surface-2); }
+.rep-tab.is-active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+.rep-panel { display: none; }
+.rep-panel.is-active { display: block; }
+
+/* ─── Reportes: print ────────────────────────────────────── */
+@media print {
+  .sidebar, .topbar, .rep-tabs, .compras-filtros-panel,
+  #repBtnExportarPDF, #repBtnImprimir, #repBtnActualizar,
+  #repBtnCompras, #repBtnVentas, .compras-toolbar-actions { display: none !important; }
+  .rep-panel { display: block !important; }
+  .panel { box-shadow: none !important; border: 1px solid #ddd !important; page-break-inside: avoid; }
+  .view { display: block !important; }
+}

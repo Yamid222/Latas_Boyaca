@@ -48,7 +48,7 @@ async function boot() {
   loginMount.innerHTML = loginHtml;
   dashboardMount.innerHTML = dashboardHtml;
 
-  const { initAuth } = await import('../../controllers/authController.js');
+  const { initAuth } = await import('../../controllers/authController.js?v=20260517_02');
   initAuth();
 }
 
