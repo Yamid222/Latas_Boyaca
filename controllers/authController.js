@@ -74,7 +74,7 @@ export function initAuth() {
   // ── Módulos de features ─────────────────────────────────────────────────
   let setCuentasUsuario = null;
 
-  import('../assets/js/dashboard.js?v=20260517_01')
+  import('../assets/js/dashboard.js?v=20260518_02')
     .then((m) => { if (typeof m.initDashboard  === 'function') m.initDashboard();  })
     .catch((e) => console.error('Dashboard:', e));
 
