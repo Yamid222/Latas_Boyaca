@@ -1220,3 +1220,60 @@ input[type="date"].compras-control {
   .panel { box-shadow: none !important; border: 1px solid #ddd !important; page-break-inside: avoid; }
   .view { display: block !important; }
 }
+/* ─── Módulo Cuentas ─────────────────────────────────────────── */
+[data-ctab-panel] { display: none; }
+[data-ctab-panel].is-active { display: block; }
+
+.form-msg {
+  font-size: .85rem;
+  padding: .35rem .6rem;
+  border-radius: .35rem;
+  margin-top: .5rem;
+}
+.form-msg.error { color: var(--danger); background: rgba(220,38,38,.08); }
+.form-msg.ok    { color: var(--success, #059669); background: rgba(5,150,105,.08); }
+
+.perm-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: .75rem 1.25rem;
+  margin-bottom: .75rem;
+}
+.perm-grupo strong {
+  display: block;
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+  margin-bottom: .35rem;
+}
+.perm-item {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  font-size: .88rem;
+  cursor: pointer;
+  padding: .15rem 0;
+}
+.perm-item input { cursor: pointer; accent-color: var(--accent); }
+
+.lb-modal.is-open { display: flex; }
+.btn-sm {
+  font-size: .8rem;
+  padding: .25rem .55rem;
+  border-radius: .3rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.btn-outline {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text);
+}
+.btn-outline:hover { background: var(--surface-2); }
+.btn-danger {
+  background: var(--danger, #dc2626);
+  color: #fff;
+  margin-left: .25rem;
+}
+.btn-danger:hover { opacity: .85; }
