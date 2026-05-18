@@ -8,7 +8,7 @@ const TITLES = {
   ventas:       ['Ventas',        'Desempeño comercial'],
   reportes:     ['Reportes',      'Análisis y exportación'],
   cuentas:      ['Cuentas',       'Usuarios y permisos'],
-  configuracion:['Configuración', 'Ajustes del sistema'],
+  configuracion:['Configuraciones', 'Umbral de stock y tipos de pago'],
 };
 
 function setTheme(html, dark, iconSun, iconMoon) {
@@ -158,9 +158,10 @@ export function initAuth() {
     navAccesible = new Set(['dashboard']);
     permisos.forEach(p => { if (vistaMap[p]) navAccesible.add(vistaMap[p]); });
 
+    const SIEMPRE_VISIBLES = new Set(['dashboard', 'configuracion']);
     nav.querySelectorAll('.nav-item[data-view]').forEach(btn => {
       const v = btn.dataset.view;
-      if (v === 'dashboard') return;  // dashboard siempre visible
+      if (SIEMPRE_VISIBLES.has(v)) return;
       btn.style.display = navAccesible.has(v) ? '' : 'none';
     });
   }
@@ -177,7 +178,6 @@ export function initAuth() {
     if (pwd) pwd.value = '';
     clearLoginError();
     showView('dashboard', pageTitle, nav);
-    // Restaurar todos los items del nav
     nav.querySelectorAll('.nav-item[data-view]').forEach(btn => { btn.style.display = ''; });
   }
 
