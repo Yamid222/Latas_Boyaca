@@ -137,16 +137,29 @@ function reporte_dashboard(PDO $pdo): void
     $stCMA->execute([$iniAnt, $finAnt]);
     $compraMesAnt = (float) $stCMA->fetchColumn();
 
-    // Productos bajo stock
-    $stBajo = $pdo->prepare(
-        'SELECT COUNT(*) FROM (
-            SELECT p.idProducto, COALESCE(SUM(i.entrada - i.salida), 0) AS stock
-            FROM Producto p LEFT JOIN Inventario i ON i.idProducto = p.idProducto
-            GROUP BY p.idProducto HAVING stock <= ?
-         ) t'
+    // Ventas hoy
+    $stVH = $pdo->query('SELECT COALESCE(SUM(total),0) AS tot, COUNT(*) AS cant FROM ventas WHERE DATE(fecha) = CURDATE()');
+    $ventasHoy = $stVH->fetch();
+
+    // Ventas ayer (para delta)
+    $stVAy = $pdo->query('SELECT COALESCE(SUM(total),0) AS tot FROM ventas WHERE DATE(fecha) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)');
+    $ventasAyer = (float) $stVAy->fetchColumn();
+
+    // Compras hoy
+    $stCH = $pdo->query(
+        'SELECT COALESCE(SUM(dc.valorTotal),0) AS tot, COUNT(DISTINCT c.idCompra) AS cant
+         FROM Compra c LEFT JOIN DetalleCompra dc ON dc.idCompra = c.idCompra
+         WHERE DATE(c.fecha) = CURDATE()'
     );
-    $stBajo->execute([$umbral]);
-    $bajosStock = (int) $stBajo->fetchColumn();
+    $comprasHoy = $stCH->fetch();
+
+    // Compras ayer (para delta)
+    $stCAy = $pdo->query(
+        'SELECT COALESCE(SUM(dc.valorTotal),0) AS tot
+         FROM Compra c LEFT JOIN DetalleCompra dc ON dc.idCompra = c.idCompra
+         WHERE DATE(c.fecha) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)'
+    );
+    $comprasAyer = (float) $stCAy->fetchColumn();
 
     // Actividad reciente: últimas 8 ventas
     $stActiv = $pdo->query(
@@ -187,8 +200,10 @@ function reporte_dashboard(PDO $pdo): void
             'totalProveedores' => $totalProveedores,
             'totalCategorias'  => $totalCategorias,
             'anio'             => $anio,
-            'umbral'           => $umbral,
-            'bajosStock'       => $bajosStock,
+            'ventasHoy'        => ['total' => (float) $ventasHoy['tot'],  'cantidad' => (int) $ventasHoy['cant']],
+            'ventasAyer'       => $ventasAyer,
+            'comprasHoy'       => ['total' => (float) $comprasHoy['tot'], 'cantidad' => (int) $comprasHoy['cant']],
+            'comprasAyer'      => $comprasAyer,
             'ventasAnio'       => ['cantidad' => (int) $ventAnio['cant'], 'total' => (float) $ventAnio['tot']],
             'comprasAnio'      => ['cantidad' => (int) $compAnio['cant'], 'total' => (float) $compAnio['tot']],
             'ventasMes'        => ['total' => (float) $ventMes['tot'],    'cantidad' => (int) $ventMes['cant']],

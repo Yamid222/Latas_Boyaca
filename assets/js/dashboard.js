@@ -104,8 +104,8 @@ function renderDashCharts(serieVentas, catChart) {
 
 async function cargarDashboard() {
   const el = {};
-  ['dashVentasVal','dashVentasDelta','dashProductosVal','dashStockDelta',
-   'dashComprasVal','dashComprasDelta','dashBajoStockVal','dashBajoStockDelta','dashActBody']
+  ['dashVentasVal','dashVentasDelta','dashVentasHoyVal','dashVentasHoyDelta',
+   'dashComprasVal','dashComprasDelta','dashComprasHoyVal','dashComprasHoyDelta','dashActBody']
     .forEach(id => { el[id] = document.getElementById(id); });
 
   try {
@@ -123,11 +123,12 @@ async function cargarDashboard() {
       el.dashVentasDelta.className    = 'stat-delta' + (d.up === true ? ' up' : d.up === false ? ' down' : '');
     }
 
-    // Tarjeta 2 — Productos en stock
-    if (el.dashProductosVal) el.dashProductosVal.textContent = stats.stockTotal.toLocaleString('es-CO');
-    if (el.dashStockDelta) {
-      el.dashStockDelta.textContent = `${stats.totalProductos} productos registrados`;
-      el.dashStockDelta.className   = 'stat-delta';
+    // Tarjeta 2 — Ventas del día
+    if (el.dashVentasHoyVal) el.dashVentasHoyVal.textContent = fmt(stats.ventasHoy.total);
+    if (el.dashVentasHoyDelta) {
+      const d = calcDelta(stats.ventasHoy.total, stats.ventasAyer);
+      el.dashVentasHoyDelta.textContent = stats.ventasHoy.cantidad + ' venta(s) hoy · ' + d.txt;
+      el.dashVentasHoyDelta.className   = 'stat-delta' + (d.up === true ? ' up' : d.up === false ? ' down' : '');
     }
 
     // Tarjeta 3 — Compras del mes
@@ -138,11 +139,12 @@ async function cargarDashboard() {
       el.dashComprasDelta.className   = 'stat-delta' + (d.up === true ? ' up' : d.up === false ? ' down' : '');
     }
 
-    // Tarjeta 4 — Bajo stock
-    if (el.dashBajoStockVal) el.dashBajoStockVal.textContent = stats.bajosStock;
-    if (el.dashBajoStockDelta) {
-      el.dashBajoStockDelta.textContent = `Umbral: ≤ ${stats.umbral} uds.`;
-      el.dashBajoStockDelta.className   = 'stat-delta ' + (stats.bajosStock > 0 ? 'down' : 'up');
+    // Tarjeta 4 — Compras del día
+    if (el.dashComprasHoyVal) el.dashComprasHoyVal.textContent = fmt(stats.comprasHoy.total);
+    if (el.dashComprasHoyDelta) {
+      const d = calcDelta(stats.comprasHoy.total, stats.comprasAyer);
+      el.dashComprasHoyDelta.textContent = stats.comprasHoy.cantidad + ' compra(s) hoy · ' + d.txt;
+      el.dashComprasHoyDelta.className   = 'stat-delta' + (d.up === true ? ' up' : d.up === false ? ' down' : '');
     }
 
     // Actividad reciente
