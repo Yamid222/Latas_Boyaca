@@ -1277,3 +1277,9 @@ input[type="date"].compras-control {
   margin-left: .25rem;
 }
 .btn-danger:hover { opacity: .85; }
+
+/* ─── Módulo Devoluciones ────────────────────────────────────── */
+.badge.blue   { background: rgba(37,99,235,.13);  color: #2563eb; }
+.badge.amber  { background: rgba(217,119,6,.13);  color: #b45309; }
+.badge.danger { background: rgba(220,38,38,.15);  color: var(--danger); }
+.text-muted   { color: var(--text-muted); text-align: center; }

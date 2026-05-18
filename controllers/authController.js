@@ -7,6 +7,7 @@ const TITLES = {
   compras:      ['Compras',       'Órdenes y adquisiciones'],
   ventas:       ['Ventas',        'Desempeño comercial'],
   reportes:     ['Reportes',      'Análisis y exportación'],
+  devoluciones: ['Devoluciones',  'Gestión de devoluciones'],
   cuentas:      ['Cuentas',       'Usuarios y permisos'],
   configuracion:['Configuraciones', 'Umbral de stock y tipos de pago'],
 };
@@ -102,6 +103,10 @@ export function initAuth() {
     .then((m) => { if (typeof m.initVentas     === 'function') m.initVentas();     })
     .catch((e) => console.error('Ventas:', e));
 
+  import('../assets/js/devoluciones.js?v=20260518_01')
+    .then((m) => { if (typeof m.initDevoluciones === 'function') m.initDevoluciones(); })
+    .catch((e) => console.error('Devoluciones:', e));
+
   import('../assets/js/reportes.js?v=20260517_04')
     .then((m) => { if (typeof m.initReportes   === 'function') m.initReportes();   })
     .catch((e) => console.error('Reportes:', e));
@@ -152,8 +157,9 @@ export function initAuth() {
       ver_proveedores: 'proveedores',
       ver_compras:     'compras',
       ver_ventas:      'ventas',
-      ver_reportes:    'reportes',
-      gestionar_cuentas: 'cuentas',
+      ver_reportes:         'reportes',
+      ver_devoluciones:     'devoluciones',
+      gestionar_cuentas:    'cuentas',
     };
     navAccesible = new Set(['dashboard']);
     permisos.forEach(p => { if (vistaMap[p]) navAccesible.add(vistaMap[p]); });
