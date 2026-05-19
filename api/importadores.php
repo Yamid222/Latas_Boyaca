@@ -197,42 +197,42 @@ function eliminar(PDO $pdo, int $id): array
     return ['ok' => true];
 }
 
-try {
-    $pdo = lb_pdo();
-} catch (Throwable $e) {
-    lb_json(['ok' => false, 'error' => 'Error de base de datos: ' . $e->getMessage()], 500);
-}
+$pdo = lb_pdo();
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-if ($method === 'GET') {
-    if (isset($_GET['id'])) {
-        $id = (int) $_GET['id'];
-        if ($id <= 0) {
-            lb_json(['ok' => false, 'error' => 'ID inválido'], 400);
+try {
+    if ($method === 'GET') {
+        if (isset($_GET['id'])) {
+            $id = (int) $_GET['id'];
+            if ($id <= 0) {
+                lb_json(['ok' => false, 'error' => 'ID inválido'], 400);
+            }
+            lb_json(uno($pdo, $id));
         }
-        lb_json(uno($pdo, $id));
+        lb_json(listar($pdo));
     }
-    lb_json(listar($pdo));
+
+    if ($method === 'POST') {
+        $action = $_GET['action'] ?? 'create';
+        $raw = file_get_contents('php://input');
+        $in = $raw !== '' ? json_decode($raw, true) : [];
+        if (!is_array($in)) {
+            $in = [];
+        }
+
+        if ($action === 'delete') {
+            $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+            lb_json(eliminar($pdo, $id));
+        }
+        if ($action === 'update') {
+            $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+            lb_json(actualizar($pdo, $id, $in));
+        }
+        lb_json(crear($pdo, $in));
+    }
+
+    lb_json(['ok' => false, 'error' => 'Método no permitido'], 405);
+} catch (Throwable $e) {
+    lb_json_sql_error($e, 'Error en importadores:');
 }
-
-if ($method === 'POST') {
-    $action = $_GET['action'] ?? 'create';
-    $raw = file_get_contents('php://input');
-    $in = $raw !== '' ? json_decode($raw, true) : [];
-    if (!is_array($in)) {
-        $in = [];
-    }
-
-    if ($action === 'delete') {
-        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
-        lb_json(eliminar($pdo, $id));
-    }
-    if ($action === 'update') {
-        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
-        lb_json(actualizar($pdo, $id, $in));
-    }
-    lb_json(crear($pdo, $in));
-}
-
-lb_json(['ok' => false, 'error' => 'Método no permitido'], 405);

@@ -63,8 +63,16 @@ let cacheInv  = [];
 let umbralInv = 10;
 let cacheTop  = [];
 let cacheAnul = [];
-let dataVentas = { historial: [], detalles: [] };
-let dataCompras = { historial: [], detalles: [] };
+let dataVentas = { historial: [], detalles: [], devolucionDetalles: [] };
+let dataCompras = { historial: [], detalles: [], devolucionDetalles: [] };
+let trazabilidadVentas  = false;
+let trazabilidadCompras = false;
+
+function trazLabel(r) {
+  const c = r.creado_por_nombre ? escapeHtml(r.creado_por_nombre) : '—';
+  if (!r.modificado_por_nombre) return c;
+  return `${c} · Ed: ${escapeHtml(r.modificado_por_nombre)}`;
+}
 
 function activarTab(id) {
   tabActivo = id;
@@ -323,7 +331,7 @@ async function cargarComprasRep() {
   const data = await readJson(res);
   if (!data.ok) throw new Error(data.error || 'Error al cargar compras');
 
-  dataCompras = { historial: data.historial || [], detalles: data.detalles || [] };
+  dataCompras = { historial: data.historial || [], detalles: data.detalles || [], devolucionDetalles: data.devolucionDetalles || [] };
 
   const statsEl = document.getElementById('repCompStats');
   if (statsEl) {
@@ -334,18 +342,7 @@ async function cargarComprasRep() {
       card('Período', `${formatFecha(data.desde)} → ${formatFecha(data.hasta)}`, 'rango consultado', 'gray');
   }
 
-  const hist = data.historial || [];
-  if (tbody) {
-    tbody.innerHTML = hist.length
-      ? hist.map((r) => `<tr>
-          <td>#${escapeHtml(String(r.idCompra))}</td>
-          <td>${formatFecha(r.fecha)}</td>
-          <td>${escapeHtml(r.nombreImportador || '—')}</td>
-          <td>${r.numArticulos}</td>
-          <td>${money.format(Number(r.total) || 0)}</td>
-        </tr>`).join('')
-      : '<tr><td colspan="5">No hay compras en este período.</td></tr>';
-  }
+  renderComprasHistorial();
 
   const tbProv = document.getElementById('repCompProvBody');
   if (tbProv) {
@@ -368,7 +365,7 @@ async function cargarVentasRep() {
   const data = await readJson(res);
   if (!data.ok) throw new Error(data.error || 'Error al cargar ventas');
 
-  dataVentas = { historial: data.historial || [], detalles: data.detalles || [] };
+  dataVentas = { historial: data.historial || [], detalles: data.detalles || [], devolucionDetalles: data.devolucionDetalles || [] };
 
   const statsEl = document.getElementById('repVentStats');
   if (statsEl) {
@@ -380,17 +377,7 @@ async function cargarVentasRep() {
       card('Período', `${formatFecha(data.desde)} → ${formatFecha(data.hasta)}`, 'rango consultado', 'gray');
   }
 
-  const hist = data.historial || [];
-  if (tbody) {
-    tbody.innerHTML = hist.length
-      ? hist.map((r) => `<tr>
-          <td>#${escapeHtml(String(r.id_venta))}</td>
-          <td>${formatFecha(r.fecha)}</td>
-          <td>${escapeHtml(r.tipoPago || '—')}</td>
-          <td>${money.format(Number(r.total) || 0)}</td>
-        </tr>`).join('')
-      : '<tr><td colspan="4">No hay ventas en este período.</td></tr>';
-  }
+  renderVentasHistorial();
 
   const tbTp = document.getElementById('repVentTpBody');
   if (tbTp) {
@@ -399,6 +386,57 @@ async function cargarVentasRep() {
       ? tipos.map((r) => `<tr><td>${escapeHtml(r.tipoPago || '—')}</td><td>${r.numVentas}</td><td>${money.format(Number(r.total) || 0)}</td></tr>`).join('')
       : '<tr><td colspan="3">Sin datos.</td></tr>';
   }
+}
+
+function renderComprasHistorial() {
+  const tbody = document.getElementById('repCompBody');
+  if (!tbody) return;
+  const th = document.getElementById('repCompTrazTh');
+  if (th) th.hidden = !trazabilidadCompras;
+  const cols = trazabilidadCompras ? 6 : 5;
+  tbody.innerHTML = dataCompras.historial.length
+    ? dataCompras.historial.map((r) => {
+        const hasDev  = Number(r.num_devoluciones) > 0;
+        const devMonto = Number(r.total_devuelto) || 0;
+        const neto    = Number(r.total) - devMonto;
+        const totalHtml = hasDev
+          ? `<span style="text-decoration:line-through;color:var(--text-muted);font-size:.82em">${money.format(Number(r.total))}</span> <strong style="color:var(--danger)">${money.format(neto)}</strong><br><small style="color:var(--danger)">Dev: -${money.format(devMonto)}</small>`
+          : money.format(Number(r.total) || 0);
+        return `<tr${hasDev ? ' style="background:rgba(239,68,68,.07)"' : ''}>
+          <td>#${escapeHtml(String(r.idCompra))}</td>
+          <td>${formatFecha(r.fecha)}</td>
+          <td>${escapeHtml(r.nombreImportador || '—')}</td>
+          <td>${r.numArticulos}</td>
+          <td>${totalHtml}</td>
+          ${trazabilidadCompras ? `<td>${trazLabel(r)}</td>` : ''}
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="${cols}">No hay compras en este período.</td></tr>`;
+}
+
+function renderVentasHistorial() {
+  const tbody = document.getElementById('repVentBody');
+  if (!tbody) return;
+  const th = document.getElementById('repVentTrazTh');
+  if (th) th.hidden = !trazabilidadVentas;
+  const cols = trazabilidadVentas ? 5 : 4;
+  tbody.innerHTML = dataVentas.historial.length
+    ? dataVentas.historial.map((r) => {
+        const hasDev   = Number(r.num_devoluciones) > 0;
+        const devMonto = Number(r.total_devuelto) || 0;
+        const neto     = Number(r.total) - devMonto;
+        const totalHtml = hasDev
+          ? `<span style="text-decoration:line-through;color:var(--text-muted);font-size:.82em">${money.format(Number(r.total))}</span> <strong style="color:var(--danger)">${money.format(neto)}</strong><br><small style="color:var(--danger)">Dev: -${money.format(devMonto)}</small>`
+          : money.format(Number(r.total) || 0);
+        return `<tr${hasDev ? ' style="background:rgba(239,68,68,.07)"' : ''}>
+          <td>#${escapeHtml(String(r.id_venta))}</td>
+          <td>${formatFecha(r.fecha)}</td>
+          <td>${escapeHtml(r.tipoPago || '—')}</td>
+          <td>${totalHtml}</td>
+          ${trazabilidadVentas ? `<td>${trazLabel(r)}</td>` : ''}
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="${cols}">No hay ventas en este período.</td></tr>`;
 }
 
 // ─── Productos reporte ────────────────────────────────────
@@ -468,51 +506,119 @@ function exportarVentasPDF() {
   doc.text(`Período: ${desde}  →  ${hasta}`, 14, 21);
   doc.setDrawColor(226, 232, 240); doc.line(14, 23, 283, 23);
 
-  const { historial, detalles } = dataVentas;
+  const { historial, detalles, devolucionDetalles } = dataVentas;
   if (!historial.length) {
     doc.setFontSize(10); doc.setTextColor(100, 116, 139);
     doc.text('No hay ventas en este período.', 14, 32);
     doc.save(`ventas_${desde}_${hasta}.pdf`); return;
   }
 
-  const body = [];
-  const groupRows = new Set();
+  const conTraz = trazabilidadVentas;
+  const numCols = conTraz ? 6 : 5;
+  const colHdrs = ['Producto', 'Código', 'Cant.', 'Precio unit.', 'Subtotal'];
+  if (conTraz) colHdrs.push('Usuario');
+
+  let startY = 28;
 
   historial.forEach((v) => {
-    groupRows.add(body.length);
-    body.push([
-      `Venta #${v.id_venta}  |  ${fmtFechaPDF(v.fecha)}  |  ${v.tipoPago || '—'}`,
-      '', '', '', money.format(Number(v.total) || 0),
-    ]);
-    const det = detalles.filter((d) => String(d.id_venta) === String(v.id_venta));
-    if (det.length) {
-      det.forEach((d) => body.push([
-        `   ${d.nombre || '—'}`,
-        d.codigoOEM || '—',
-        d.cantidad,
-        money.format(Number(d.precio) || 0),
-        money.format(Number(d.subtotal) || 0),
-      ]));
-    } else {
-      body.push(['   Sin detalle disponible', '', '', '', '']);
-    }
-  });
+    if (startY > 175) { doc.addPage(); startY = 15; }
 
-  doc.autoTable({
-    startY: 28,
-    head: [['Descripción / Producto', 'Código', 'Unidades', 'Precio unit.', 'Subtotal / Total']],
-    body,
-    margin: { left: 14, right: 14 },
-    styles: { fontSize: 8, cellPadding: 1.5 },
-    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
-    alternateRowStyles: { fillColor: [248, 250, 252] },
-    didParseCell: (data) => {
-      if (data.section === 'body' && groupRows.has(data.row.index)) {
-        data.cell.styles.fontStyle = 'bold';
-        data.cell.styles.fillColor = [219, 234, 254];
-        data.cell.styles.textColor = [30, 58, 138];
-      }
-    },
+    const hasDev   = Number(v.num_devoluciones) > 0;
+    const devMonto = Number(v.total_devuelto) || 0;
+    const neto     = Number(v.total) - devMonto;
+    const det      = detalles.filter((d) => String(d.id_venta) === String(v.id_venta));
+    const devDet   = devolucionDetalles.filter((d) => String(d.id_venta) === String(v.id_venta));
+
+    const bodyRows = [];
+    const sepRows  = new Set();
+    const devRows  = new Set();
+
+    if (det.length) {
+      det.forEach((d) => {
+        const row = [d.nombre || '—', d.codigoOEM || '—', d.cantidad,
+                     money.format(Number(d.precio) || 0), money.format(Number(d.subtotal) || 0)];
+        if (conTraz) row.push('');
+        bodyRows.push(row);
+      });
+    } else {
+      bodyRows.push([{ content: 'Sin detalle disponible', colSpan: numCols,
+                       styles: { textColor: [150, 150, 150], fontStyle: 'italic' } }]);
+    }
+
+    if (hasDev && devDet.length) {
+      // Agrupar líneas de devolución por id_devolucion
+      const grupos = {};
+      devDet.forEach((dd) => {
+        const key = dd.id_devolucion;
+        if (!grupos[key]) grupos[key] = { motivo: dd.motivo, creado_por: dd.creado_por_nombre, aprobado_por: dd.aprobado_por_nombre, items: [] };
+        grupos[key].items.push(dd);
+      });
+      Object.values(grupos).forEach((g) => {
+        const trazDev = g.creado_por
+          ? `Registrado por: ${g.creado_por}` + (g.aprobado_por ? `  ·  Aprobado por: ${g.aprobado_por}` : '')
+          : (g.aprobado_por ? `Aprobado por: ${g.aprobado_por}` : '');
+        const sepText = `↩  Devolución — ${g.motivo || 'sin motivo'}` + (trazDev ? `   ·   ${trazDev}` : '');
+        sepRows.add(bodyRows.length);
+        bodyRows.push([{ content: sepText, colSpan: numCols }]);
+        g.items.forEach((dd) => {
+          devRows.add(bodyRows.length);
+          const row = [dd.producto || '—', dd.codigoOEM || '—', dd.cantidad,
+                       money.format(Number(dd.precio_unitario) || 0),
+                       `-${money.format(Number(dd.subtotal_dev) || 0)}`];
+          if (conTraz) row.push('');
+          bodyRows.push(row);
+        });
+      });
+    }
+
+    const trazVenta = v.creado_por_nombre
+      ? `Registrado por: ${v.creado_por_nombre}` +
+        (v.modificado_por_nombre ? `  ·  Editado por: ${v.modificado_por_nombre}` : '')
+      : '';
+    const banner = `Venta #${v.id_venta}   ·   ${fmtFechaPDF(v.fecha)}   ·   ${v.tipoPago || '—'}` +
+      (trazVenta ? `   ·   ${trazVenta}` : '');
+
+    const footText = hasDev
+      ? `Total bruto: ${money.format(Number(v.total) || 0)}   ·   Devuelto: -${money.format(devMonto)}   ·   Neto: ${money.format(neto)}`
+      : `Total: ${money.format(Number(v.total) || 0)}`;
+
+    doc.autoTable({
+      startY,
+      head: [
+        [{ content: banner, colSpan: numCols }],
+        colHdrs,
+      ],
+      body: bodyRows,
+      foot: [[{ content: footText, colSpan: numCols,
+                styles: { halign: 'right', fontStyle: 'bold',
+                          textColor: hasDev ? [153, 27, 27] : [30, 41, 59] } }]],
+      margin: { left: 14, right: 14 },
+      styles: { fontSize: 7.5, cellPadding: 1.5 },
+      headStyles: { fillColor: [241, 245, 249], textColor: [51, 65, 85], fontStyle: 'bold', fontSize: 7.5 },
+      footStyles: { fillColor: [241, 245, 249], fontSize: 8 },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      tableLineColor: [203, 213, 225],
+      tableLineWidth: 0.3,
+      didParseCell: (data) => {
+        if (data.section === 'head' && data.row.index === 0) {
+          data.cell.styles.fillColor = hasDev ? [254, 226, 226] : [219, 234, 254];
+          data.cell.styles.textColor = hasDev ? [153, 27, 27] : [30, 58, 138];
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fontSize  = 8.5;
+        }
+        if (data.section === 'body' && sepRows.has(data.row.index)) {
+          data.cell.styles.fillColor = [254, 242, 242];
+          data.cell.styles.textColor = [153, 27, 27];
+          data.cell.styles.fontStyle = 'bold';
+        }
+        if (data.section === 'body' && devRows.has(data.row.index)) {
+          data.cell.styles.textColor = [185, 28, 28];
+          data.cell.styles.fillColor = [255, 251, 251];
+        }
+      },
+    });
+
+    startY = doc.lastAutoTable.finalY + 5;
   });
 
   doc.save(`ventas_${desde}_${hasta}.pdf`);
@@ -532,54 +638,179 @@ function exportarComprasPDF() {
   doc.text(`Período: ${desde}  →  ${hasta}`, 14, 21);
   doc.setDrawColor(226, 232, 240); doc.line(14, 23, 283, 23);
 
-  const { historial, detalles } = dataCompras;
+  const { historial, detalles, devolucionDetalles } = dataCompras;
   if (!historial.length) {
     doc.setFontSize(10); doc.setTextColor(100, 116, 139);
     doc.text('No hay compras en este período.', 14, 32);
     doc.save(`compras_${desde}_${hasta}.pdf`); return;
   }
 
-  const body = [];
-  const groupRows = new Set();
+  const conTraz = trazabilidadCompras;
+  const numCols = conTraz ? 6 : 5;
+  const colHdrs = ['Producto', 'Código', 'Cant.', 'Precio unit.', 'Subtotal'];
+  if (conTraz) colHdrs.push('Usuario');
+
+  let startY = 28;
 
   historial.forEach((c) => {
-    groupRows.add(body.length);
-    body.push([
-      `Compra #${c.idCompra}  |  ${fmtFechaPDF(c.fecha)}  |  ${c.nombreImportador || '—'}`,
-      '', '', '', money.format(Number(c.total) || 0),
-    ]);
-    const det = detalles.filter((d) => String(d.idCompra) === String(c.idCompra));
+    if (startY > 175) { doc.addPage(); startY = 15; }
+
+    const hasDev   = Number(c.num_devoluciones) > 0;
+    const devMonto = Number(c.total_devuelto) || 0;
+    const neto     = Number(c.total) - devMonto;
+    const det      = detalles.filter((d) => String(d.idCompra) === String(c.idCompra));
+    const devDet   = devolucionDetalles.filter((d) => String(d.id_compra) === String(c.idCompra));
+
+    const bodyRows = [];
+    const sepRows  = new Set();
+    const devRows  = new Set();
+
     if (det.length) {
-      det.forEach((d) => body.push([
-        `   ${d.nombre || '—'}`,
-        d.codigoOEM || '—',
-        d.cantidad,
-        money.format(Number(d.precioCompra) || 0),
-        money.format(Number(d.valorTotal) || 0),
-      ]));
+      det.forEach((d) => {
+        const row = [d.nombre || '—', d.codigoOEM || '—', d.cantidad,
+                     money.format(Number(d.precioCompra) || 0), money.format(Number(d.valorTotal) || 0)];
+        if (conTraz) row.push('');
+        bodyRows.push(row);
+      });
     } else {
-      body.push(['   Sin detalle disponible', '', '', '', '']);
+      bodyRows.push([{ content: 'Sin detalle disponible', colSpan: numCols,
+                       styles: { textColor: [150, 150, 150], fontStyle: 'italic' } }]);
     }
+
+    if (hasDev && devDet.length) {
+      const grupos = {};
+      devDet.forEach((dd) => {
+        const key = dd.id_devolucion;
+        if (!grupos[key]) grupos[key] = { motivo: dd.motivo, creado_por: dd.creado_por_nombre, aprobado_por: dd.aprobado_por_nombre, items: [] };
+        grupos[key].items.push(dd);
+      });
+      Object.values(grupos).forEach((g) => {
+        const trazDev = g.creado_por
+          ? `Registrado por: ${g.creado_por}` + (g.aprobado_por ? `  ·  Aprobado por: ${g.aprobado_por}` : '')
+          : (g.aprobado_por ? `Aprobado por: ${g.aprobado_por}` : '');
+        const sepText = `↩  Devolución — ${g.motivo || 'sin motivo'}` + (trazDev ? `   ·   ${trazDev}` : '');
+        sepRows.add(bodyRows.length);
+        bodyRows.push([{ content: sepText, colSpan: numCols }]);
+        g.items.forEach((dd) => {
+          devRows.add(bodyRows.length);
+          const row = [dd.producto || '—', dd.codigoOEM || '—', dd.cantidad,
+                       money.format(Number(dd.precio_unitario) || 0),
+                       `-${money.format(Number(dd.subtotal_dev) || 0)}`];
+          if (conTraz) row.push('');
+          bodyRows.push(row);
+        });
+      });
+    }
+
+    const trazCompra = c.creado_por_nombre
+      ? `Registrado por: ${c.creado_por_nombre}` +
+        (c.modificado_por_nombre ? `  ·  Editado por: ${c.modificado_por_nombre}` : '')
+      : '';
+    const banner = `Compra #${c.idCompra}   ·   ${fmtFechaPDF(c.fecha)}   ·   ${c.nombreImportador || '—'}` +
+      (trazCompra ? `   ·   ${trazCompra}` : '');
+
+    const footText = hasDev
+      ? `Total bruto: ${money.format(Number(c.total) || 0)}   ·   Devuelto: -${money.format(devMonto)}   ·   Neto: ${money.format(neto)}`
+      : `Total: ${money.format(Number(c.total) || 0)}`;
+
+    doc.autoTable({
+      startY,
+      head: [
+        [{ content: banner, colSpan: numCols }],
+        colHdrs,
+      ],
+      body: bodyRows,
+      foot: [[{ content: footText, colSpan: numCols,
+                styles: { halign: 'right', fontStyle: 'bold',
+                          textColor: hasDev ? [153, 27, 27] : [30, 41, 59] } }]],
+      margin: { left: 14, right: 14 },
+      styles: { fontSize: 7.5, cellPadding: 1.5 },
+      headStyles: { fillColor: [241, 245, 249], textColor: [51, 65, 85], fontStyle: 'bold', fontSize: 7.5 },
+      footStyles: { fillColor: [241, 245, 249], fontSize: 8 },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      tableLineColor: [203, 213, 225],
+      tableLineWidth: 0.3,
+      didParseCell: (data) => {
+        if (data.section === 'head' && data.row.index === 0) {
+          data.cell.styles.fillColor = hasDev ? [254, 226, 226] : [209, 250, 229];
+          data.cell.styles.textColor = hasDev ? [153, 27, 27] : [6, 78, 59];
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fontSize  = 8.5;
+        }
+        if (data.section === 'body' && sepRows.has(data.row.index)) {
+          data.cell.styles.fillColor = [254, 242, 242];
+          data.cell.styles.textColor = [153, 27, 27];
+          data.cell.styles.fontStyle = 'bold';
+        }
+        if (data.section === 'body' && devRows.has(data.row.index)) {
+          data.cell.styles.textColor = [185, 28, 28];
+          data.cell.styles.fillColor = [255, 251, 251];
+        }
+      },
+    });
+
+    startY = doc.lastAutoTable.finalY + 5;
   });
 
+  doc.save(`compras_${desde}_${hasta}.pdf`);
+}
+
+// ─── PDF productos más vendidos ──────────────────────────
+
+function exportarTopVendidosPDF() {
+  if (!window.jspdf?.jsPDF) { alert('Librería PDF no disponible.'); return; }
+  const [desde, hasta] = getRango('repProdPeriodo', 'repProdDesde', 'repProdHasta');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  doc.setFontSize(14); doc.setTextColor(37, 99, 235);
+  doc.text('Latas Boyacá — Top 20 productos más vendidos', 14, 14);
+  doc.setFontSize(9); doc.setTextColor(100, 116, 139);
+  doc.text(`Período: ${desde}  →  ${hasta}`, 14, 21);
+  doc.setDrawColor(226, 232, 240); doc.line(14, 23, 283, 23);
+  const rows = [...document.querySelectorAll('#repProdTopBody tr')]
+    .map(tr => [...tr.querySelectorAll('td')].map(td => td.textContent.trim()));
   doc.autoTable({
     startY: 28,
-    head: [['Descripción / Producto', 'Código', 'Unidades', 'Precio unit.', 'Subtotal / Total']],
-    body,
+    head: [['#', 'Código', 'Producto', 'Marca', 'Categoría', 'Unidades', 'Total vendido']],
+    body: rows,
     margin: { left: 14, right: 14 },
     styles: { fontSize: 8, cellPadding: 1.5 },
     headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
     alternateRowStyles: { fillColor: [248, 250, 252] },
-    didParseCell: (data) => {
-      if (data.section === 'body' && groupRows.has(data.row.index)) {
-        data.cell.styles.fontStyle = 'bold';
-        data.cell.styles.fillColor = [209, 250, 229];
-        data.cell.styles.textColor = [6, 78, 59];
-      }
-    },
   });
+  doc.save(`top_productos_${desde}_${hasta}.pdf`);
+}
 
-  doc.save(`compras_${desde}_${hasta}.pdf`);
+// ─── PDF productos sin ventas ─────────────────────────────
+
+function exportarSinVentasPDF() {
+  if (!window.jspdf?.jsPDF) { alert('Librería PDF no disponible.'); return; }
+  const [desde, hasta] = getRango('repProdPeriodo', 'repProdDesde', 'repProdHasta');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  doc.setFontSize(14); doc.setTextColor(239, 68, 68);
+  doc.text('Latas Boyacá — Productos sin ventas registradas', 14, 14);
+  doc.setFontSize(9); doc.setTextColor(100, 116, 139);
+  doc.text(`Período: ${desde}  →  ${hasta}`, 14, 21);
+  doc.setDrawColor(226, 232, 240); doc.line(14, 23, 283, 23);
+  const rows = [...document.querySelectorAll('#repProdSinVentBody tr')]
+    .map(tr => [...tr.querySelectorAll('td')].map(td => td.textContent.trim()))
+    .filter(r => r.length > 1);
+  if (!rows.length) {
+    doc.setFontSize(10); doc.setTextColor(100, 116, 139);
+    doc.text('Todos los productos tienen ventas en este período.', 14, 32);
+    doc.save(`sin_ventas_${desde}_${hasta}.pdf`); return;
+  }
+  doc.autoTable({
+    startY: 28,
+    head: [['Código', 'Producto', 'Marca', 'Categoría', 'Stock actual']],
+    body: rows,
+    margin: { left: 14, right: 14 },
+    styles: { fontSize: 8, cellPadding: 1.5 },
+    headStyles: { fillColor: [239, 68, 68], textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [255, 251, 251] },
+  });
+  doc.save(`sin_ventas_${desde}_${hasta}.pdf`);
 }
 
 // ─── PDF genérico por panel ───────────────────────────────
@@ -711,6 +942,12 @@ export function initReportes() {
     cargarComprasRep().catch((e) => showMsg(e.message || String(e), true));
   });
   document.getElementById('repBtnCompPDF')?.addEventListener('click', exportarComprasPDF);
+  document.getElementById('repBtnCompTraz')?.addEventListener('click', (e) => {
+    trazabilidadCompras = !trazabilidadCompras;
+    e.currentTarget.setAttribute('aria-pressed', String(trazabilidadCompras));
+    e.currentTarget.classList.toggle('is-active', trazabilidadCompras);
+    renderComprasHistorial();
+  });
 
   // Ventas — período, consultar, PDF
   document.getElementById('repVentPeriodo')?.addEventListener('change', () => {
@@ -721,6 +958,12 @@ export function initReportes() {
     cargarVentasRep().catch((e) => showMsg(e.message || String(e), true));
   });
   document.getElementById('repBtnVentPDF')?.addEventListener('click', exportarVentasPDF);
+  document.getElementById('repBtnVentTraz')?.addEventListener('click', (e) => {
+    trazabilidadVentas = !trazabilidadVentas;
+    e.currentTarget.setAttribute('aria-pressed', String(trazabilidadVentas));
+    e.currentTarget.classList.toggle('is-active', trazabilidadVentas);
+    renderVentasHistorial();
+  });
 
   // Productos — período, filtrar, PDF
   document.getElementById('repProdPeriodo')?.addEventListener('change', () => {
@@ -730,10 +973,8 @@ export function initReportes() {
   document.getElementById('repBtnProd')?.addEventListener('click', () => {
     cargarProductosRep().catch((e) => showMsg(e.message || String(e), true));
   });
-  document.getElementById('repBtnProdPDF')?.addEventListener('click', () => {
-    const [desde, hasta] = getRango('repProdPeriodo', 'repProdDesde', 'repProdHasta');
-    exportarPanelPDF('rep-panel-productos', 'Reporte de Productos', `Top vendidos: ${desde}  →  ${hasta}`);
-  });
+  document.getElementById('repBtnProdTopPDF')?.addEventListener('click', exportarTopVendidosPDF);
+  document.getElementById('repBtnProdSinPDF')?.addEventListener('click', exportarSinVentasPDF);
 
   // Valores por defecto para inputs de rango
   const hoy = new Date();

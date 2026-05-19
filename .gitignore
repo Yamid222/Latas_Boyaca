@@ -1,0 +1,20 @@
+# Dependencias Composer
+/vendor/
+composer.lock
+
+# Configuración SMTP con credenciales reales — NO subir al repo
+/config/mail.php
+
+# Logs y datos de desarrollo
+/data/recovery_log.txt
+/data/*.log
+
+# Variables de entorno
+.env
+.env.local
+
+# IDEs y SO
+.idea/
+.vscode/
+*.DS_Store
+Thumbs.db

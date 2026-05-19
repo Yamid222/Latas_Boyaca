@@ -6,86 +6,23 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib.php';
 
-function tieneIdCategoria(PDO $pdo): bool
-{
-    $st = $pdo->query("SHOW COLUMNS FROM Producto LIKE 'idCategoria'");
-    return (bool) $st->fetch();
-}
-
-function tieneCodigoOEM(PDO $pdo): bool
-{
-    $st = $pdo->query("SHOW COLUMNS FROM Producto LIKE 'codigoOEM'");
-    return (bool) $st->fetch();
-}
-
 function listar(PDO $pdo): array
 {
-    if (tieneIdCategoria($pdo)) {
-        $rows = $pdo->query(
-            'SELECT
-                p.idProducto,
-                p.codigoOEM,
-                p.nombre,
-                p.marca,
-                p.categoria,
-                p.precioInicial,
-                p.estado,
-                p.idCategoria,
-                c.nombre AS nombreCategoria
-             FROM Producto p
-             LEFT JOIN Categoria c ON c.idCategoria = p.idCategoria
-             ORDER BY p.nombre'
-        )->fetchAll();
-    } else {
-        $rows = $pdo->query(
-            'SELECT
-                p.idProducto,
-                p.codigoOEM,
-                p.nombre,
-                p.marca,
-                p.categoria,
-                p.precioInicial,
-                p.estado,
-                c.idCategoria,
-                c.nombre AS nombreCategoria
-             FROM Producto p
-             LEFT JOIN Categoria c ON c.nombre = p.categoria
-             ORDER BY p.nombre'
-        )->fetchAll();
-    }
+    $rows = $pdo->query(
+        'SELECT idProducto, codigoOEM, nombre, marca, lineaVehiculo, modelo, descripcion, categoria, condicionProducto, precioInicial
+         FROM Producto
+         ORDER BY nombre'
+    )->fetchAll();
     return ['ok' => true, 'productos' => $rows];
 }
 
 function uno(PDO $pdo, int $id): array
 {
-    $sql = tieneIdCategoria($pdo)
-        ? 'SELECT
-                p.idProducto,
-                p.codigoOEM,
-                p.nombre,
-                p.marca,
-                p.categoria,
-                p.precioInicial,
-                p.estado,
-                p.idCategoria,
-                c.nombre AS nombreCategoria
-           FROM Producto p
-           LEFT JOIN Categoria c ON c.idCategoria = p.idCategoria
-           WHERE p.idProducto = ?'
-        : 'SELECT
-                p.idProducto,
-                p.codigoOEM,
-                p.nombre,
-                p.marca,
-                p.categoria,
-                p.precioInicial,
-                p.estado,
-                c.idCategoria,
-                c.nombre AS nombreCategoria
-           FROM Producto p
-           LEFT JOIN Categoria c ON c.nombre = p.categoria
-           WHERE p.idProducto = ?';
-    $st = $pdo->prepare($sql);
+    $st = $pdo->prepare(
+        'SELECT idProducto, codigoOEM, nombre, marca, lineaVehiculo, modelo, descripcion, categoria, condicionProducto, precioInicial
+         FROM Producto
+         WHERE idProducto = ?'
+    );
     $st->execute([$id]);
     $row = $st->fetch();
     if (!$row) {
@@ -103,24 +40,17 @@ function validar(array $in): ?string
     if (strlen($codigo) > 50) {
         return 'El código es demasiado largo.';
     }
-    $nombre = trim((string) ($in['nombre'] ?? ''));
-    if ($nombre === '') {
-        return 'El nombre es obligatorio.';
-    }
-    if (strlen($nombre) > 100) {
-        return 'El nombre es demasiado largo.';
-    }
-    $marca = trim((string) ($in['marca'] ?? ''));
-    if (strlen($marca) > 100) {
-        return 'Marca demasiado larga.';
-    }
-    $idCategoria = isset($in['idCategoria']) ? (int) $in['idCategoria'] : 0;
-    if ($idCategoria <= 0) {
-        return 'Seleccione una categoría válida.';
+    $modelo = trim((string) ($in['modelo'] ?? ''));
+    if ($modelo === '') {
+        return 'El modelo es obligatorio.';
     }
     $precio = isset($in['precioInicial']) ? (float) $in['precioInicial'] : 0;
     if ($precio < 0) {
         return 'El precio no puede ser negativo.';
+    }
+    $condicion = trim((string) ($in['condicionProducto'] ?? ''));
+    if (!in_array($condicion, ['nuevo', 'segunda mano'], true)) {
+        return 'La condición debe ser "nuevo" o "segunda mano".';
     }
     return null;
 }
@@ -132,67 +62,26 @@ function crear(PDO $pdo, array $in): array
         return ['ok' => false, 'error' => $err];
     }
     $codigo = trim((string) ($in['codigoOEM'] ?? ''));
-    if (tieneCodigoOEM($pdo)) {
-        $dupCod = $pdo->prepare('SELECT idProducto FROM Producto WHERE LOWER(codigoOEM) = LOWER(?)');
-        $dupCod->execute([$codigo]);
-        if ($dupCod->fetch()) {
-            return ['ok' => false, 'error' => 'El código del producto ya existe.'];
-        }
+    $dup = $pdo->prepare('SELECT idProducto FROM Producto WHERE LOWER(codigoOEM) = LOWER(?)');
+    $dup->execute([$codigo]);
+    if ($dup->fetch()) {
+        return ['ok' => false, 'error' => 'El código del producto ya existe.'];
     }
-    $idCategoria = (int) ($in['idCategoria'] ?? 0);
-    $precio = round((float) ($in['precioInicial'] ?? 0), 2);
-    $stCat = $pdo->prepare('SELECT nombre FROM Categoria WHERE idCategoria = ?');
-    $stCat->execute([$idCategoria]);
-    $nombreCat = $stCat->fetchColumn();
-    if ($nombreCat === false) {
-        return ['ok' => false, 'error' => 'Categoría no encontrada.'];
-    }
-    $st = $pdo->prepare(
-        (tieneIdCategoria($pdo) && tieneCodigoOEM($pdo))
-            ? 'INSERT INTO Producto (codigoOEM, nombre, marca, categoria, precioInicial, idCategoria)
-               VALUES (?, ?, ?, ?, ?, ?)'
-            : (tieneIdCategoria($pdo)
-                ? 'INSERT INTO Producto (nombre, marca, categoria, precioInicial, idCategoria)
-                   VALUES (?, ?, ?, ?, ?)'
-                : (tieneCodigoOEM($pdo)
-                    ? 'INSERT INTO Producto (codigoOEM, nombre, marca, categoria, precioInicial)
-                       VALUES (?, ?, ?, ?, ?)'
-                    : 'INSERT INTO Producto (nombre, marca, categoria, precioInicial)
-                       VALUES (?, ?, ?, ?)'))
-    );
-    if (tieneIdCategoria($pdo) && tieneCodigoOEM($pdo)) {
-        $st->execute([
-            $codigo,
-            trim($in['nombre']),
-            trim((string) ($in['marca'] ?? '')) ?: null,
-            (string) $nombreCat,
-            $precio,
-            $idCategoria,
-        ]);
-    } elseif (tieneIdCategoria($pdo)) {
-        $st->execute([
-            trim($in['nombre']),
-            trim((string) ($in['marca'] ?? '')) ?: null,
-            (string) $nombreCat,
-            $precio,
-            $idCategoria,
-        ]);
-    } elseif (tieneCodigoOEM($pdo)) {
-        $st->execute([
-            $codigo,
-            trim($in['nombre']),
-            trim((string) ($in['marca'] ?? '')) ?: null,
-            (string) $nombreCat,
-            $precio,
-        ]);
-    } else {
-        $st->execute([
-            trim($in['nombre']),
-            trim((string) ($in['marca'] ?? '')) ?: null,
-            (string) $nombreCat,
-            $precio,
-        ]);
-    }
+    $modelo = trim((string) ($in['modelo'] ?? ''));
+    $pdo->prepare(
+        'INSERT INTO Producto (codigoOEM, nombre, marca, lineaVehiculo, modelo, descripcion, categoria, precioInicial, condicionProducto)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    )->execute([
+        $codigo,
+        $modelo,
+        trim((string) ($in['marca'] ?? '')) ?: null,
+        trim((string) ($in['lineaVehiculo'] ?? '')) ?: null,
+        $modelo,
+        trim((string) ($in['descripcion'] ?? '')) ?: null,
+        trim((string) ($in['categoria'] ?? '')) ?: null,
+        round((float) ($in['precioInicial'] ?? 0), 2),
+        trim((string) ($in['condicionProducto'] ?? 'nuevo')),
+    ]);
     return ['ok' => true, 'idProducto' => (int) $pdo->lastInsertId()];
 }
 
@@ -206,75 +95,29 @@ function actualizar(PDO $pdo, int $id, array $in): array
         return ['ok' => false, 'error' => $err];
     }
     $codigo = trim((string) ($in['codigoOEM'] ?? ''));
-    if (tieneCodigoOEM($pdo)) {
-        $dupCod = $pdo->prepare('SELECT idProducto FROM Producto WHERE LOWER(codigoOEM) = LOWER(?) AND idProducto <> ?');
-        $dupCod->execute([$codigo, $id]);
-        if ($dupCod->fetch()) {
-            return ['ok' => false, 'error' => 'El código del producto ya existe.'];
-        }
+    $dup = $pdo->prepare('SELECT idProducto FROM Producto WHERE LOWER(codigoOEM) = LOWER(?) AND idProducto <> ?');
+    $dup->execute([$codigo, $id]);
+    if ($dup->fetch()) {
+        return ['ok' => false, 'error' => 'El código del producto ya existe.'];
     }
-    $idCategoria = (int) ($in['idCategoria'] ?? 0);
-    $precio = round((float) ($in['precioInicial'] ?? 0), 2);
-    $stCat = $pdo->prepare('SELECT nombre FROM Categoria WHERE idCategoria = ?');
-    $stCat->execute([$idCategoria]);
-    $nombreCat = $stCat->fetchColumn();
-    if ($nombreCat === false) {
-        return ['ok' => false, 'error' => 'Categoría no encontrada.'];
-    }
+    $modelo = trim((string) ($in['modelo'] ?? ''));
     $st = $pdo->prepare(
-        (tieneIdCategoria($pdo) && tieneCodigoOEM($pdo))
-            ? 'UPDATE Producto
-               SET codigoOEM = ?, nombre = ?, marca = ?, categoria = ?, precioInicial = ?, idCategoria = ?
-               WHERE idProducto = ?'
-            : (tieneIdCategoria($pdo)
-                ? 'UPDATE Producto
-                   SET nombre = ?, marca = ?, categoria = ?, precioInicial = ?, idCategoria = ?
-                   WHERE idProducto = ?'
-                : (tieneCodigoOEM($pdo)
-                    ? 'UPDATE Producto
-                       SET codigoOEM = ?, nombre = ?, marca = ?, categoria = ?, precioInicial = ?
-                       WHERE idProducto = ?'
-                    : 'UPDATE Producto
-                       SET nombre = ?, marca = ?, categoria = ?, precioInicial = ?
-                       WHERE idProducto = ?'))
+        'UPDATE Producto
+         SET codigoOEM = ?, nombre = ?, marca = ?, lineaVehiculo = ?, modelo = ?, descripcion = ?, categoria = ?, precioInicial = ?, condicionProducto = ?
+         WHERE idProducto = ?'
     );
-    if (tieneIdCategoria($pdo) && tieneCodigoOEM($pdo)) {
-        $st->execute([
-            $codigo,
-            trim($in['nombre']),
-            trim((string) ($in['marca'] ?? '')) ?: null,
-            (string) $nombreCat,
-            $precio,
-            $idCategoria,
-            $id,
-        ]);
-    } elseif (tieneIdCategoria($pdo)) {
-        $st->execute([
-            trim($in['nombre']),
-            trim((string) ($in['marca'] ?? '')) ?: null,
-            (string) $nombreCat,
-            $precio,
-            $idCategoria,
-            $id,
-        ]);
-    } elseif (tieneCodigoOEM($pdo)) {
-        $st->execute([
-            $codigo,
-            trim($in['nombre']),
-            trim((string) ($in['marca'] ?? '')) ?: null,
-            (string) $nombreCat,
-            $precio,
-            $id,
-        ]);
-    } else {
-        $st->execute([
-            trim($in['nombre']),
-            trim((string) ($in['marca'] ?? '')) ?: null,
-            (string) $nombreCat,
-            $precio,
-            $id,
-        ]);
-    }
+    $st->execute([
+        $codigo,
+        $modelo,
+        trim((string) ($in['marca'] ?? '')) ?: null,
+        trim((string) ($in['lineaVehiculo'] ?? '')) ?: null,
+        $modelo,
+        trim((string) ($in['descripcion'] ?? '')) ?: null,
+        trim((string) ($in['categoria'] ?? '')) ?: null,
+        round((float) ($in['precioInicial'] ?? 0), 2),
+        trim((string) ($in['condicionProducto'] ?? 'nuevo')),
+        $id,
+    ]);
     if ($st->rowCount() === 0) {
         $chk = $pdo->prepare('SELECT 1 FROM Producto WHERE idProducto = ?');
         $chk->execute([$id]);
@@ -308,11 +151,7 @@ function eliminar(PDO $pdo, int $id): array
     return ['ok' => true];
 }
 
-try {
-    $pdo = lb_pdo();
-} catch (Throwable $e) {
-    lb_json(['ok' => false, 'error' => 'Error de base de datos: ' . $e->getMessage()], 500);
-}
+$pdo = lb_pdo();
 
 try {
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -348,5 +187,5 @@ try {
     }
     lb_json(['ok' => false, 'error' => 'Método no permitido'], 405);
 } catch (Throwable $e) {
-    lb_json(['ok' => false, 'error' => 'Error en productos: ' . $e->getMessage()], 500);
+    lb_json_sql_error($e, 'Error en productos:');
 }

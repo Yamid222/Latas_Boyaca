@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/config/database.php';
+require_once dirname(__DIR__) . '/controllers/AuthController.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -34,7 +35,7 @@ function get_pdo(): PDO
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $action = $_GET['action'] ?? '';
 
-// ── GET /api/auth.php?action=me ─────────────────────────────────────────────
+// ── GET ?action=me ────────────────────────────────────────────────────────────
 if ($method === 'GET' && $action === 'me') {
     if (empty($_SESSION['lb_uid'])) {
         json_out(['ok' => false, 'auth' => false]);
@@ -60,9 +61,9 @@ if ($method === 'GET' && $action === 'me') {
     json_out(['ok' => true, 'auth' => true, 'usuario' => $row]);
 }
 
-// ── POST /api/auth.php?action=login ─────────────────────────────────────────
+// ── POST ?action=login ────────────────────────────────────────────────────────
 if ($method === 'POST' && $action === 'login') {
-    $body = json_decode(file_get_contents('php://input'), true) ?? [];
+    $body     = json_decode(file_get_contents('php://input'), true) ?? [];
     $email    = trim($body['email']    ?? '');
     $password = trim($body['password'] ?? '');
 
@@ -99,11 +100,70 @@ if ($method === 'POST' && $action === 'login') {
     json_out(['ok' => true, 'usuario' => $row]);
 }
 
-// ── POST /api/auth.php?action=logout ────────────────────────────────────────
+// ── POST ?action=logout ───────────────────────────────────────────────────────
 if ($method === 'POST' && $action === 'logout') {
     session_unset();
     session_destroy();
     json_out(['ok' => true]);
+}
+
+// ── POST ?action=request_code ─────────────────────────────────────────────────
+if ($method === 'POST' && $action === 'request_code') {
+    $body  = json_decode(file_get_contents('php://input'), true) ?? [];
+    $email = trim($body['email'] ?? '');
+
+    $ctrl   = new AuthController(get_pdo());
+    $result = $ctrl->requestCode($email);
+    $code   = (int) ($result['_httpCode'] ?? 200);
+    unset($result['_httpCode']);
+    json_out($result, $code);
+}
+
+// ── POST ?action=verify_code ──────────────────────────────────────────────────
+if ($method === 'POST' && $action === 'verify_code') {
+    $body     = json_decode(file_get_contents('php://input'), true) ?? [];
+    $email    = trim($body['email']    ?? '');
+    $codigo   = trim($body['codigo']   ?? '');
+    $password = trim($body['password'] ?? '');
+
+    $ctrl   = new AuthController(get_pdo());
+    $result = $ctrl->verifyCode($email, $codigo, $password);
+    $code   = (int) ($result['_httpCode'] ?? 200);
+    unset($result['_httpCode']);
+    json_out($result, $code);
+}
+
+// ── POST ?action=request_email_verify ────────────────────────────────────────
+// Envía código para verificar que un correo nuevo es válido y accesible
+if ($method === 'POST' && $action === 'request_email_verify') {
+    if (empty($_SESSION['lb_uid'])) {
+        json_out(['ok' => false, 'error' => 'No autenticado.'], 401);
+    }
+    $body  = json_decode(file_get_contents('php://input'), true) ?? [];
+    $email = trim($body['email'] ?? '');
+
+    $ctrl   = new AuthController(get_pdo());
+    $result = $ctrl->requestEmailVerify($email);
+    $code   = (int) ($result['_httpCode'] ?? 200);
+    unset($result['_httpCode']);
+    json_out($result, $code);
+}
+
+// ── POST ?action=verify_email ─────────────────────────────────────────────────
+// Confirma el código de verificación de correo (sin cambiar contraseña)
+if ($method === 'POST' && $action === 'verify_email') {
+    if (empty($_SESSION['lb_uid'])) {
+        json_out(['ok' => false, 'error' => 'No autenticado.'], 401);
+    }
+    $body   = json_decode(file_get_contents('php://input'), true) ?? [];
+    $email  = trim($body['email']  ?? '');
+    $codigo = trim($body['codigo'] ?? '');
+
+    $ctrl   = new AuthController(get_pdo());
+    $result = $ctrl->verifyEmail($email, $codigo);
+    $code   = (int) ($result['_httpCode'] ?? 200);
+    unset($result['_httpCode']);
+    json_out($result, $code);
 }
 
 json_out(['ok' => false, 'error' => 'Acción no reconocida.'], 400);

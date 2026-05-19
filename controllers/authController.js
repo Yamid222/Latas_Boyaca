@@ -79,7 +79,7 @@ export function initAuth() {
     .then((m) => { if (typeof m.initDashboard  === 'function') m.initDashboard();  })
     .catch((e) => console.error('Dashboard:', e));
 
-  import('../assets/js/compras.js?v=20260517_03')
+  import('../assets/js/compras.js?v=20260518_02')
     .then((m) => { if (typeof m.initCompras    === 'function') m.initCompras();    })
     .catch((e) => console.error('Compras:', e));
 
@@ -99,15 +99,15 @@ export function initAuth() {
     .then((m) => { if (typeof m.initInventario === 'function') m.initInventario(); })
     .catch((e) => console.error('Inventario:', e));
 
-  import('../assets/js/ventas.js?v=20260517_02')
+  import('../assets/js/ventas.js?v=20260518_02')
     .then((m) => { if (typeof m.initVentas     === 'function') m.initVentas();     })
     .catch((e) => console.error('Ventas:', e));
 
-  import('../assets/js/devoluciones.js?v=20260518_01')
+  import('../assets/js/devoluciones.js?v=20260518_04')
     .then((m) => { if (typeof m.initDevoluciones === 'function') m.initDevoluciones(); })
     .catch((e) => console.error('Devoluciones:', e));
 
-  import('../assets/js/reportes.js?v=20260517_04')
+  import('../assets/js/reportes.js?v=20260518_08')
     .then((m) => { if (typeof m.initReportes   === 'function') m.initReportes();   })
     .catch((e) => console.error('Reportes:', e));
 
@@ -119,7 +119,7 @@ export function initAuth() {
     .then((m) => { if (typeof m.initConfiguracion==='function') m.initConfiguracion(); })
     .catch((e) => console.error('Configuración:', e));
 
-  import('../assets/js/cuentas.js?v=20260518_02')
+  import('../assets/js/cuentas.js?v=20260518_05')
     .then((m) => {
       if (typeof m.initCuentas      === 'function') m.initCuentas();
       if (typeof m.setCuentasUsuario === 'function') setCuentasUsuario = m.setCuentasUsuario;
@@ -145,7 +145,7 @@ export function initAuth() {
   }
 
   function clearLoginError() {
-    if (loginError) { loginError.textContent = ''; loginError.hidden = true; }
+    if (loginError) { loginError.textContent = ''; loginError.hidden = true; loginError.style.color = ''; }
   }
 
   function aplicarPermisos(permisos) {
@@ -164,7 +164,7 @@ export function initAuth() {
     navAccesible = new Set(['dashboard']);
     permisos.forEach(p => { if (vistaMap[p]) navAccesible.add(vistaMap[p]); });
 
-    const SIEMPRE_VISIBLES = new Set(['dashboard', 'configuracion']);
+    const SIEMPRE_VISIBLES = new Set(['dashboard', 'configuracion', 'cuentas']);
     nav.querySelectorAll('.nav-item[data-view]').forEach(btn => {
       const v = btn.dataset.view;
       if (SIEMPRE_VISIBLES.has(v)) return;
@@ -276,5 +276,120 @@ export function initAuth() {
   ['email', 'password'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('input', clearLoginError);
+  });
+
+  // ── Recuperación de contraseña desde pantalla de login ──────────────────
+  const loginFormWrap   = document.getElementById('loginFormWrap');
+  const recupStep1      = document.getElementById('recupStep1');
+  const recupStep2      = document.getElementById('recupStep2');
+  const linkOlvidePass  = document.getElementById('linkOlvidePass');
+  const linkVolverLogin = document.getElementById('linkVolverLogin');
+  const linkVolverEmail = document.getElementById('linkVolverEmail');
+  const recupEmail      = document.getElementById('recupEmail');
+  const recupBtnEnviar  = document.getElementById('recupBtnEnviar');
+  const recupError1     = document.getElementById('recupError1');
+  const recupCodigo     = document.getElementById('recupCodigo');
+  const recupNewPass    = document.getElementById('recupNewPass');
+  const recupConfPass   = document.getElementById('recupConfPass');
+  const recupBtnVerif   = document.getElementById('recupBtnVerificar');
+  const recupError2     = document.getElementById('recupError2');
+  const recupDevNota    = document.getElementById('recupDevNota');
+
+  function showRecupError(el, msg) {
+    if (!el) return;
+    el.textContent = msg;
+    el.hidden = !msg;
+  }
+
+  function mostrarPasoRecup(paso) {
+    if (loginFormWrap) loginFormWrap.hidden = paso !== 'login';
+    if (recupStep1)    recupStep1.hidden    = paso !== 'step1';
+    if (recupStep2)    recupStep2.hidden    = paso !== 'step2';
+  }
+
+  linkOlvidePass?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (recupEmail) recupEmail.value = document.getElementById('email')?.value.trim() ?? '';
+    showRecupError(recupError1, '');
+    clearLoginError();
+    mostrarPasoRecup('step1');
+  });
+
+  linkVolverLogin?.addEventListener('click', (e) => {
+    e.preventDefault();
+    mostrarPasoRecup('login');
+  });
+
+  linkVolverEmail?.addEventListener('click', (e) => {
+    e.preventDefault();
+    showRecupError(recupError2, '');
+    mostrarPasoRecup('step1');
+  });
+
+  recupBtnEnviar?.addEventListener('click', async () => {
+    const email = recupEmail?.value.trim() ?? '';
+    if (!email) { showRecupError(recupError1, 'Ingresa tu correo.'); return; }
+    showRecupError(recupError1, '');
+    recupBtnEnviar.disabled = true;
+    recupBtnEnviar.textContent = 'Enviando…';
+    try {
+      const res  = await fetch('api/auth.php?action=request_code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!data.ok) { showRecupError(recupError1, data.error || 'Error al enviar.'); return; }
+      if (recupDevNota) {
+        recupDevNota.textContent = data.dev
+          ? 'Código: ' + data.dev_codigo + ' (sin SMTP — solo desarrollo)'
+          : '';
+        recupDevNota.hidden = !data.dev;
+      }
+      showRecupError(recupError2, '');
+      if (recupCodigo)  recupCodigo.value   = '';
+      if (recupNewPass) recupNewPass.value  = '';
+      if (recupConfPass) recupConfPass.value = '';
+      mostrarPasoRecup('step2');
+    } catch {
+      showRecupError(recupError1, 'Error de conexión.');
+    } finally {
+      recupBtnEnviar.disabled = false;
+      recupBtnEnviar.textContent = 'Enviar código';
+    }
+  });
+
+  recupBtnVerif?.addEventListener('click', async () => {
+    const email    = recupEmail?.value.trim()    ?? '';
+    const codigo   = recupCodigo?.value.trim()   ?? '';
+    const password = recupNewPass?.value.trim()  ?? '';
+    const confirm  = recupConfPass?.value.trim() ?? '';
+    if (!codigo)             { showRecupError(recupError2, 'Ingresa el código.'); return; }
+    if (!password)           { showRecupError(recupError2, 'Ingresa la nueva contraseña.'); return; }
+    if (password.length < 6) { showRecupError(recupError2, 'La contraseña debe tener al menos 6 caracteres.'); return; }
+    if (password !== confirm) { showRecupError(recupError2, 'Las contraseñas no coinciden.'); return; }
+    showRecupError(recupError2, '');
+    recupBtnVerif.disabled = true;
+    recupBtnVerif.textContent = 'Verificando…';
+    try {
+      const res  = await fetch('api/auth.php?action=verify_code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, codigo, password }),
+      });
+      const data = await res.json();
+      if (!data.ok) { showRecupError(recupError2, data.error || 'Error.'); return; }
+      mostrarPasoRecup('login');
+      if (loginError) {
+        loginError.textContent = '¡Contraseña actualizada! Ya puedes iniciar sesión.';
+        loginError.style.color = 'var(--success, #22c55e)';
+        loginError.hidden = false;
+      }
+    } catch {
+      showRecupError(recupError2, 'Error de conexión.');
+    } finally {
+      recupBtnVerif.disabled = false;
+      recupBtnVerif.textContent = 'Cambiar contraseña';
+    }
   });
 }

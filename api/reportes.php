@@ -352,12 +352,23 @@ function reporte_compras(PDO $pdo): void
     $stHist = $pdo->prepare(
         'SELECT c.idCompra, c.fecha, i.nombre AS nombreImportador,
                 COALESCE(SUM(dc.valorTotal), 0) AS total,
-                COUNT(dc.idCompra) AS numArticulos
+                COUNT(dc.idCompra) AS numArticulos,
+                uc.nombre AS creado_por_nombre,
+                um.nombre AS modificado_por_nombre,
+                c.modificado_en,
+                IFNULL((SELECT SUM(dd.cantidad * dd.precio_unitario)
+                        FROM lb_devolucion d
+                        JOIN lb_devolucion_detalle dd ON dd.id_devolucion = d.id
+                        WHERE d.tipo = \'compra\' AND d.id_referencia = c.idCompra AND d.estado = \'aprobada\'), 0) AS total_devuelto,
+                IFNULL((SELECT COUNT(*) FROM lb_devolucion d
+                        WHERE d.tipo = \'compra\' AND d.id_referencia = c.idCompra AND d.estado = \'aprobada\'), 0) AS num_devoluciones
          FROM Compra c
          INNER JOIN Importador i ON i.idImportador = c.idImportador
          LEFT JOIN DetalleCompra dc ON dc.idCompra = c.idCompra
+         LEFT JOIN lb_usuario uc ON uc.id = c.creado_por
+         LEFT JOIN lb_usuario um ON um.id = c.modificado_por
          WHERE c.fecha >= ? AND c.fecha <= ?
-         GROUP BY c.idCompra, c.fecha, i.nombre
+         GROUP BY c.idCompra, c.fecha, i.nombre, uc.nombre, um.nombre, c.modificado_en
          ORDER BY c.fecha DESC, c.idCompra DESC'
     );
     $stHist->execute([$desde, $hastaFin]);
@@ -386,15 +397,35 @@ function reporte_compras(PDO $pdo): void
     );
     $stDet->execute([$desde, $hastaFin]);
 
+    $stDevDet = $pdo->prepare(
+        'SELECT d.id AS id_devolucion, d.id_referencia AS id_compra, d.motivo,
+                p.nombre AS producto, p.codigoOEM,
+                dd.cantidad, dd.precio_unitario,
+                (dd.cantidad * dd.precio_unitario) AS subtotal_dev,
+                uc.nombre AS creado_por_nombre,
+                ua.nombre AS aprobado_por_nombre
+         FROM lb_devolucion d
+         JOIN lb_devolucion_detalle dd ON dd.id_devolucion = d.id
+         JOIN Producto p ON p.idProducto = dd.id_producto
+         JOIN Compra c ON c.idCompra = d.id_referencia
+         LEFT JOIN lb_usuario uc ON uc.id = d.creado_por
+         LEFT JOIN lb_usuario ua ON ua.id = d.aprobado_por
+         WHERE d.tipo = \'compra\' AND d.estado = \'aprobada\'
+           AND c.fecha >= ? AND c.fecha <= ?
+         ORDER BY d.id_referencia, d.id, dd.id'
+    );
+    $stDevDet->execute([$desde, $hastaFin]);
+
     lb_json([
-        'ok'           => true,
-        'desde'        => $desde,
-        'hasta'        => $hasta,
-        'totalGastado' => (float) array_sum(array_column($historial, 'total')),
-        'totalOrdenes' => count($historial),
-        'historial'    => $historial,
-        'detalles'     => $stDet->fetchAll(),
-        'porProveedor' => $stProv->fetchAll(),
+        'ok'                  => true,
+        'desde'               => $desde,
+        'hasta'               => $hasta,
+        'totalGastado'        => (float) array_sum(array_column($historial, 'total')),
+        'totalOrdenes'        => count($historial),
+        'historial'           => $historial,
+        'detalles'            => $stDet->fetchAll(),
+        'devolucionDetalles'  => $stDevDet->fetchAll(),
+        'porProveedor'        => $stProv->fetchAll(),
     ]);
 }
 
@@ -406,9 +437,20 @@ function reporte_ventas(PDO $pdo): void
     $hastaFin = $hasta . ' 23:59:59';
 
     $stHist = $pdo->prepare(
-        'SELECT v.id_venta, v.fecha, v.total, tp.nombre AS tipoPago
+        'SELECT v.id_venta, v.fecha, v.total, tp.nombre AS tipoPago,
+                uc.nombre AS creado_por_nombre,
+                um.nombre AS modificado_por_nombre,
+                v.modificado_en,
+                IFNULL((SELECT SUM(dd.cantidad * dd.precio_unitario)
+                        FROM lb_devolucion d
+                        JOIN lb_devolucion_detalle dd ON dd.id_devolucion = d.id
+                        WHERE d.tipo = \'venta\' AND d.id_referencia = v.id_venta AND d.estado = \'aprobada\'), 0) AS total_devuelto,
+                IFNULL((SELECT COUNT(*) FROM lb_devolucion d
+                        WHERE d.tipo = \'venta\' AND d.id_referencia = v.id_venta AND d.estado = \'aprobada\'), 0) AS num_devoluciones
          FROM ventas v
          INNER JOIN tipo_pago tp ON tp.id_tipo_pago = v.id_tipo_pago
+         LEFT JOIN lb_usuario uc ON uc.id = v.creado_por
+         LEFT JOIN lb_usuario um ON um.id = v.modificado_por
          WHERE v.fecha >= ? AND v.fecha <= ?
          ORDER BY v.fecha DESC, v.id_venta DESC'
     );
@@ -436,19 +478,39 @@ function reporte_ventas(PDO $pdo): void
     );
     $stDet->execute([$desde, $hastaFin]);
 
+    $stDevDet = $pdo->prepare(
+        'SELECT d.id AS id_devolucion, d.id_referencia AS id_venta, d.motivo,
+                p.nombre AS producto, p.codigoOEM,
+                dd.cantidad, dd.precio_unitario,
+                (dd.cantidad * dd.precio_unitario) AS subtotal_dev,
+                uc.nombre AS creado_por_nombre,
+                ua.nombre AS aprobado_por_nombre
+         FROM lb_devolucion d
+         JOIN lb_devolucion_detalle dd ON dd.id_devolucion = d.id
+         JOIN Producto p ON p.idProducto = dd.id_producto
+         JOIN ventas v ON v.id_venta = d.id_referencia
+         LEFT JOIN lb_usuario uc ON uc.id = d.creado_por
+         LEFT JOIN lb_usuario ua ON ua.id = d.aprobado_por
+         WHERE d.tipo = \'venta\' AND d.estado = \'aprobada\'
+           AND v.fecha >= ? AND v.fecha <= ?
+         ORDER BY d.id_referencia, d.id, dd.id'
+    );
+    $stDevDet->execute([$desde, $hastaFin]);
+
     $totalVendido = (float) array_sum(array_column($historial, 'total'));
     $totalVentas  = count($historial);
 
     lb_json([
-        'ok'          => true,
-        'desde'       => $desde,
-        'hasta'       => $hasta,
-        'totalVendido'=> $totalVendido,
-        'totalVentas' => $totalVentas,
-        'ticketProm'  => $totalVentas > 0 ? round($totalVendido / $totalVentas, 2) : 0.0,
-        'historial'   => $historial,
-        'detalles'    => $stDet->fetchAll(),
-        'porTipoPago' => $stTp->fetchAll(),
+        'ok'                  => true,
+        'desde'               => $desde,
+        'hasta'               => $hasta,
+        'totalVendido'        => $totalVendido,
+        'totalVentas'         => $totalVentas,
+        'ticketProm'          => $totalVentas > 0 ? round($totalVendido / $totalVentas, 2) : 0.0,
+        'historial'           => $historial,
+        'detalles'            => $stDet->fetchAll(),
+        'devolucionDetalles'  => $stDevDet->fetchAll(),
+        'porTipoPago'         => $stTp->fetchAll(),
     ]);
 }
 

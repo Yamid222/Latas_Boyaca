@@ -77,14 +77,22 @@ if ($method === 'PUT') {
 
     if ($id === 0) lb_json(['ok' => false, 'error' => 'id requerido.'], 422);
 
+    $esSelf = ($id === (int)$_SESSION['lb_uid']);
+
     $sets  = [];
     $vals  = [];
-    if ($nombre !== '') { $sets[] = 'nombre = ?';      $vals[] = $nombre; }
-    if ($email  !== '') { $sets[] = 'email = ?';       $vals[] = $email;  }
-    if ($id_rol  >  0)  { $sets[] = 'id_rol = ?';      $vals[] = $id_rol; }
-    if ($activo !== null){ $sets[] = 'activo = ?';     $vals[] = $activo; }
-
+    if ($nombre !== '') { $sets[] = 'nombre = ?';  $vals[] = $nombre; }
+    if ($email  !== '') { $sets[] = 'email = ?';   $vals[] = $email;  }
+    // Rol y estado solo los puede cambiar un admin (no el propio usuario)
+    if (!$esSelf) {
+        if ($id_rol > 0)       { $sets[] = 'id_rol = ?'; $vals[] = $id_rol; }
+        if ($activo !== null)  { $sets[] = 'activo = ?'; $vals[] = $activo; }
+    }
+    // Solo el propio usuario puede cambiar su contraseña (nunca el admin por otro)
     if (!empty($b['password']) && trim($b['password']) !== '') {
+        if (!$esSelf) {
+            lb_json(['ok' => false, 'error' => 'La contraseña solo puede cambiarla el propio usuario desde su cuenta.'], 403);
+        }
         if (strlen(trim($b['password'])) < 6) {
             lb_json(['ok' => false, 'error' => 'La contraseña debe tener al menos 6 caracteres.'], 422);
         }

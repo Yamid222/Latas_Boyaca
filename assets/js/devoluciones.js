@@ -175,6 +175,10 @@ function abrirNuevaDevolucion() {
   document.getElementById('devFormNotas').value   = '';
   document.getElementById('devRefInfo').hidden    = true;
   document.getElementById('devProductosArea').innerHTML = '';
+  const restRow = document.getElementById('devRestituirRow');
+  if (restRow) restRow.style.display = '';
+  const restChk = document.getElementById('devRestituirStock');
+  if (restChk) restChk.checked = true;
   showFormMsg('');
   document.getElementById('devFormModal')?.classList.add('is-open');
 }
@@ -223,14 +227,14 @@ async function buscarReferencia() {
     }
 
     refDetalle = res.detalle;
-    renderProductosDevolucion(res.detalle);
+    renderProductosDevolucion(res.detalle, tipo);
   } catch (e) {
     document.getElementById('devProductosArea').innerHTML = '';
     showFormMsg(e.message);
   }
 }
 
-function renderProductosDevolucion(detalle) {
+function renderProductosDevolucion(detalle, tipo) {
   const cont = document.getElementById('devProductosArea');
   if (!cont) return;
 
@@ -239,18 +243,26 @@ function renderProductosDevolucion(detalle) {
     return;
   }
 
+  const isCompra = tipo === 'compra';
+
   cont.innerHTML = `
     <table class="data-table" style="margin-top:.5rem;">
       <thead>
         <tr>
           <th><input type="checkbox" id="devChkAll" title="Seleccionar todos"> Producto</th>
+          ${isCompra ? '<th>Stock actual</th>' : ''}
           <th>Disp.</th>
           <th>Devolver</th>
           <th>Precio unit.</th>
         </tr>
       </thead>
       <tbody>
-        ${detalle.map((p, i) => `
+        ${detalle.map((p, i) => {
+          const disponible  = p.disponible ?? p.cantidad;
+          const stockActual = p.stock_actual ?? disponible;
+          const maxDev      = isCompra ? Math.min(disponible, stockActual) : disponible;
+          const stockBajo   = isCompra && stockActual < disponible;
+          return `
           <tr>
             <td>
               <label style="display:flex;align-items:center;gap:.4rem;">
@@ -258,15 +270,25 @@ function renderProductosDevolucion(detalle) {
                 ${esc(p.producto)}
               </label>
             </td>
-            <td>${p.cantidad}</td>
+            ${isCompra ? `<td style="${stockBajo ? 'color:var(--danger);font-weight:600' : ''}">${stockActual}${stockBajo ? ' ⚠' : ''}</td>` : ''}
+            <td>${disponible}</td>
             <td>
               <input type="number" class="compras-control dev-qty" data-idx="${i}"
-                     style="width:5rem;" min="1" max="${p.cantidad}" value="${p.cantidad}">
+                     style="width:5rem;" min="1" max="${maxDev}" value="${maxDev}">
             </td>
             <td>${fmt(p.precio_unitario)}</td>
-          </tr>`).join('')}
+          </tr>`;
+        }).join('')}
       </tbody>
     </table>`;
+
+  if (isCompra) {
+    const hayStockBajo = detalle.some(p => (p.stock_actual ?? (p.disponible ?? p.cantidad)) < (p.disponible ?? p.cantidad));
+    if (hayStockBajo) {
+      cont.insertAdjacentHTML('beforeend',
+        '<p style="font-size:.82rem;color:var(--danger);margin-top:.4rem;">⚠ Algunos productos tienen stock inferior a la cantidad disponible para devolver.</p>');
+    }
+  }
 
   // Seleccionar / deseleccionar todos
   document.getElementById('devChkAll')?.addEventListener('change', (e) => {
@@ -290,21 +312,36 @@ async function guardarDevolucion() {
   if (!checks.length) return showFormMsg('Seleccione al menos un producto.');
 
   const detalle = [];
+  let validacionFallida = false;
   checks.forEach(cb => {
+    if (validacionFallida) return;
     const idx = parseInt(cb.dataset.idx);
     const qty = parseInt(area.querySelector(`.dev-qty[data-idx="${idx}"]`)?.value ?? '0');
     const p   = refDetalle[idx];
     if (!p || qty <= 0) return;
-    if (qty > p.cantidad) { showFormMsg(`Cantidad de «${p.producto}» supera lo disponible (${p.cantidad}).`); return; }
+    const disponible = p.disponible ?? p.cantidad;
+    const maxQty = tipo === 'compra' && p.stock_actual !== undefined
+      ? Math.min(disponible, p.stock_actual)
+      : disponible;
+    if (qty > maxQty) {
+      showFormMsg(`Cantidad de «${p.producto}» supera el stock disponible (${maxQty}).`);
+      validacionFallida = true;
+      return;
+    }
     detalle.push({ id_producto: p.id_producto, cantidad: qty, precio_unitario: p.precio_unitario });
   });
 
+  if (validacionFallida) return;
   if (!detalle.length) return showFormMsg('Ningún producto válido seleccionado.');
+
+  const restituir_stock = tipo === 'venta'
+    ? (document.getElementById('devRestituirStock')?.checked ? 1 : 0)
+    : 1;
 
   const res = await fetch('api/devoluciones.php', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ tipo, id_referencia, motivo, notas, detalle }),
+    body:    JSON.stringify({ tipo, id_referencia, motivo, notas, detalle, restituir_stock }),
   }).then(r => r.json());
 
   if (!res.ok) return showFormMsg(res.error || 'Error al guardar.');
@@ -336,11 +373,14 @@ export function initDevoluciones() {
 
   // Cambio de tipo limpia el formulario
   document.getElementById('devFormTipo')?.addEventListener('change', () => {
+    const tipo = document.getElementById('devFormTipo').value;
     document.getElementById('devFormRef').value = '';
     document.getElementById('devRefInfo').hidden = true;
     document.getElementById('devProductosArea').innerHTML = '';
     refDetalle = [];
     showFormMsg('');
+    const restRow = document.getElementById('devRestituirRow');
+    if (restRow) restRow.style.display = tipo === 'venta' ? '' : 'none';
   });
 
   const view = document.getElementById('view-devoluciones');

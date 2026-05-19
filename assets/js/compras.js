@@ -398,6 +398,68 @@ function openCompraEditarPanel() {
   setComprasPanelOpen(COMPRAS_PANEL_EDITAR, true, null);
 }
 
+function renderDevolucionesSection(container, devoluciones) {
+  if (!devoluciones.length) { container.innerHTML = ''; return; }
+  const badgeStyle = {
+    pendiente: 'background:#f59e0b;color:#fff',
+    aprobada:  'background:#22c55e;color:#fff',
+    rechazada: 'background:#ef4444;color:#fff',
+  };
+  const resumen = {};
+  devoluciones.forEach((dev) => {
+    if (dev.estado === 'aprobada') {
+      dev.productos.forEach((p) => {
+        if (!resumen[p.id_producto]) resumen[p.id_producto] = { nombre: p.producto, cantidad: 0 };
+        resumen[p.id_producto].cantidad += p.cantidad;
+      });
+    }
+  });
+  const resumenEntries = Object.values(resumen);
+  let html = `<div style="margin-top:1.5rem;border-top:1px solid var(--border);padding-top:1rem;">
+    <h3 style="font-size:.95rem;font-weight:600;margin:0 0 .75rem;">Devoluciones (${devoluciones.length})</h3>`;
+  if (resumenEntries.length) {
+    html += `<p style="font-size:.8rem;font-weight:600;margin:0 0 .4rem;color:var(--text-muted)">Unidades devueltas y aprobadas:</p>
+      <div class="table-wrap" style="margin-bottom:.75rem;"><table class="data-table" style="font-size:.82rem;">
+        <thead><tr><th>Producto</th><th>Cant. devuelta</th></tr></thead><tbody>`;
+    resumenEntries.forEach((r) => {
+      html += `<tr><td>${escapeHtml(r.nombre)}</td><td>${r.cantidad}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+  }
+  devoluciones.forEach((dev) => {
+    const bs = badgeStyle[dev.estado] ?? 'background:#888;color:#fff';
+    html += `<div style="border:1px solid var(--border);border-radius:.5rem;padding:.65rem .8rem;margin-bottom:.5rem;font-size:.83rem;">
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.25rem;">
+        <strong>Dev. #${dev.id}</strong>
+        <span style="display:inline-block;padding:.1rem .45rem;border-radius:.25rem;font-size:.72rem;font-weight:700;${bs}">${escapeHtml(dev.estado)}</span>
+        <span style="color:var(--text-muted)">${escapeHtml(dev.fecha)}</span>
+      </div>
+      <p style="margin:.1rem 0 .35rem;color:var(--text-muted)">Motivo: ${escapeHtml(dev.motivo)}${dev.notas ? ` · ${escapeHtml(dev.notas)}` : ''}</p>
+      <table class="data-table" style="font-size:.8rem;">
+        <thead><tr><th>Producto</th><th>Cant.</th><th>P. unit.</th></tr></thead><tbody>`;
+    dev.productos.forEach((p) => {
+      html += `<tr><td>${escapeHtml(p.producto)}</td><td>${p.cantidad}</td><td>${money.format(Number(p.precio_unitario))}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+  });
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+async function loadDevolucionesCompra(id) {
+  const container = document.getElementById('compraDetalleDevoluciones');
+  if (!container) return;
+  container.innerHTML = '<p style="color:var(--text-muted);font-size:.85rem;margin-top:1.5rem;padding-top:.75rem;border-top:1px solid var(--border)">Cargando devoluciones…</p>';
+  try {
+    const res = await fetch(`${apiUrl('api/devoluciones.php')}?action=by_ref&tipo=compra&id=${id}`, { cache: 'no-store' });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Error');
+    renderDevolucionesSection(container, data.devoluciones);
+  } catch {
+    container.innerHTML = '';
+  }
+}
+
 export async function initCompras() {
   const btnNueva = document.getElementById('comprasBtnNueva');
   const formNueva = document.getElementById('formCompraNueva');
@@ -634,6 +696,16 @@ export async function initCompras() {
         document.getElementById('detalleCompraTitulo').textContent = `Compra #${c.idCompra}`;
         document.getElementById('detalleCompraMeta').innerHTML = `
           <strong>${escapeHtml(c.nombreImportador)}</strong> · Fecha: ${c.fecha || '—'}`;
+        const trazEl = document.getElementById('detalleCompraTraz');
+        if (trazEl) {
+          const creadoPor = c.creado_por_nombre ? escapeHtml(c.creado_por_nombre) : '—';
+          let trazHtml = `Registrado por: <strong>${creadoPor}</strong>`;
+          if (c.modificado_por_nombre) {
+            trazHtml += ` &nbsp;·&nbsp; Editado por: <strong>${escapeHtml(c.modificado_por_nombre)}</strong>`;
+            if (c.modificado_en) trazHtml += ` <span style="color:var(--text-muted)">(${escapeHtml(c.modificado_en)})</span>`;
+          }
+          trazEl.innerHTML = trazHtml;
+        }
         const body = document.getElementById('comprasDetalleCuerpo');
         body.innerHTML = '';
         data.detalles.forEach((d) => {
@@ -647,6 +719,7 @@ export async function initCompras() {
         });
         document.getElementById('comprasDetalleTotal').textContent = money.format(Number(data.total));
         openModal('modalCompraDetalle');
+        loadDevolucionesCompra(id);
       } catch (err) {
         alert(err.message || String(err));
       }

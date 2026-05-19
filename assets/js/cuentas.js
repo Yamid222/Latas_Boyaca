@@ -43,19 +43,16 @@ function cargarMiCuenta() {
 }
 
 async function guardarMiCuenta() {
-  const nombre   = $('mcNombreI')?.value.trim()   ?? '';
-  const password = $('mcPasswordI')?.value.trim() ?? '';
-  const confirm  = $('mcConfirmI')?.value.trim()  ?? '';
-  const msg      = $('mcMsg');
+  const nombre = $('mcNombreI')?.value.trim() ?? '';
+  const msg    = $('mcMsg');
 
   if (nombre === '') return showMsg(msg, 'El nombre no puede estar vacío.');
-  if (password && password !== confirm) return showMsg(msg, 'Las contraseñas no coinciden.');
-  if (password && password.length < 6) return showMsg(msg, 'La contraseña debe tener al menos 6 caracteres.');
 
-  const body = { id: usuarioActual.id, nombre };
-  if (password) body.password = password;
-
-  const res  = await fetch('api/usuarios.php', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const res  = await fetch('api/usuarios.php', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: usuarioActual.id, nombre }),
+  });
   const data = await res.json();
   if (!data.ok) return showMsg(msg, data.error || 'Error al guardar.');
 
@@ -64,16 +61,91 @@ async function guardarMiCuenta() {
   const ua = document.getElementById('userAvatar');
   if (un) un.textContent = nombre.charAt(0).toUpperCase() + nombre.slice(1);
   if (ua) ua.textContent = (nombre.charAt(0) || 'A').toUpperCase();
+  showMsg(msg, 'Nombre guardado.', 'ok');
+}
 
-  if ($('mcPasswordI')) $('mcPasswordI').value = '';
-  if ($('mcConfirmI'))  $('mcConfirmI').value  = '';
-  showMsg(msg, 'Cambios guardados.', 'ok');
+function initMcPassFlow() {
+  const step0       = $('mcPassStep0');
+  const step1       = $('mcPassStep1');
+  const btnEnviar   = $('mcPassEnviar');
+  const btnVerif    = $('mcPassVerificar');
+  const btnCancelar = $('mcPassCancelar');
+  const msgNota     = $('mcPassNota');
+  const msg         = $('mcPassMsg');
+  if (!step0 || !btnEnviar) return;
+
+  function resetPassFlow() {
+    step0.hidden = false;
+    step1.hidden = true;
+    if ($('mcPassCodigo'))  $('mcPassCodigo').value  = '';
+    if ($('mcPassNueva'))   $('mcPassNueva').value   = '';
+    if ($('mcPassConfirm')) $('mcPassConfirm').value = '';
+    showMsg(msg, '');
+  }
+
+  btnEnviar.addEventListener('click', async () => {
+    if (!usuarioActual?.email) return;
+    btnEnviar.disabled = true;
+    btnEnviar.textContent = 'Enviando…';
+    try {
+      const res  = await fetch('api/auth.php?action=request_code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: usuarioActual.email }),
+      });
+      const data = await res.json();
+      if (!data.ok) { showMsg($('mcMsg'), data.error || 'Error al enviar código.'); return; }
+      step0.hidden = true;
+      step1.hidden = false;
+      if (msgNota) {
+        msgNota.textContent = data.dev
+          ? 'Código: ' + data.dev_codigo + ' (sin SMTP — solo desarrollo)'
+          : 'Código enviado a ' + usuarioActual.email + '. Revisa tu correo.';
+        msgNota.hidden = false;
+      }
+      showMsg(msg, '');
+    } finally {
+      btnEnviar.disabled = false;
+      btnEnviar.textContent = 'Enviar código';
+    }
+  });
+
+  btnCancelar?.addEventListener('click', resetPassFlow);
+
+  btnVerif?.addEventListener('click', async () => {
+    const codigo   = $('mcPassCodigo')?.value.trim()  ?? '';
+    const password = $('mcPassNueva')?.value.trim()   ?? '';
+    const confirm  = $('mcPassConfirm')?.value.trim() ?? '';
+    if (!codigo)             return showMsg(msg, 'Ingresa el código.');
+    if (!password)           return showMsg(msg, 'Ingresa la nueva contraseña.');
+    if (password.length < 6) return showMsg(msg, 'La contraseña debe tener al menos 6 caracteres.');
+    if (password !== confirm) return showMsg(msg, 'Las contraseñas no coinciden.');
+    showMsg(msg, '');
+    btnVerif.disabled = true;
+    btnVerif.textContent = 'Verificando…';
+    try {
+      const res  = await fetch('api/auth.php?action=verify_code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: usuarioActual.email, codigo, password }),
+      });
+      const data = await res.json();
+      if (!data.ok) return showMsg(msg, data.error || 'Error al cambiar contraseña.');
+      resetPassFlow();
+      showMsg($('mcMsg'), 'Contraseña cambiada correctamente.', 'ok');
+    } finally {
+      btnVerif.disabled = false;
+      btnVerif.textContent = 'Cambiar contraseña';
+    }
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════════════
 // GESTIÓN DE USUARIOS
 // ════════════════════════════════════════════════════════════════════════════
-let editingUserId = null;
+let editingUserId      = null;
+let emailVerificado    = false;   // true cuando el correo del modal fue confirmado con código
+let emailOriginalModal = '';      // correo que tenía el usuario al abrir el modal (edición)
 
 async function cargarUsuarios() {
   const tbody = $('usuariosBody');
@@ -106,8 +178,10 @@ async function cargarUsuarios() {
       <td><span class="badge ${u.activo ? 'ok' : 'warn'}">${u.activo ? 'Activo' : 'Inactivo'}</span></td>
       <td>
         <button class="btn-sm btn-outline" onclick="abrirEditUsuario(${u.id})">Editar</button>
-        ${u.activo && u.id !== usuarioActual?.id
-          ? `<button class="btn-sm btn-danger" onclick="desactivarUsuario(${u.id})">Desactivar</button>`
+        ${u.id !== usuarioActual?.id
+          ? u.activo
+            ? `<button class="btn-sm btn-danger" onclick="desactivarUsuario(${u.id})">Desactivar</button>`
+            : `<button class="btn-sm btn-primary-inline" onclick="reactivarUsuario(${u.id})">Activar</button>`
           : ''}
       </td>
     </tr>`).join('');
@@ -128,8 +202,18 @@ async function cargarRolesCache() {
   if (res.ok) rolesCache = res.roles;
 }
 
+function resetEmailVerUI() {
+  emailVerificado = false;
+  if ($('editUsuEmailVerRow'))  $('editUsuEmailVerRow').hidden  = true;
+  if ($('editUsuEmailOkRow'))   $('editUsuEmailOkRow').hidden   = true;
+  if ($('editUsuEmailCodigo'))  $('editUsuEmailCodigo').value   = '';
+  if ($('editUsuEmailNota'))    $('editUsuEmailNota').textContent = '';
+}
+
 function abrirModalNuevoUsuario() {
-  editingUserId = null;
+  editingUserId      = null;
+  emailOriginalModal = '';
+  resetEmailVerUI();
   if ($('editUsuModal')) {
     $('editUsuTitulo').textContent = 'Nuevo usuario';
     $('editUsuNombre').value  = '';
@@ -143,18 +227,19 @@ function abrirModalNuevoUsuario() {
 }
 
 function abrirEditUsuario(id) {
-  const usuarios = Array.from($('usuariosBody').querySelectorAll('tr')).map((tr, i) => tr);
   fetch('api/usuarios.php').then(r => r.json()).then(data => {
     if (!data.ok) return;
     const u = data.usuarios.find(x => x.id === +id);
     if (!u) return;
-    editingUserId = id;
+    editingUserId      = id;
+    emailOriginalModal = u.email;
+    resetEmailVerUI();
     $('editUsuTitulo').textContent = 'Editar usuario';
     $('editUsuNombre').value  = u.nombre;
     $('editUsuEmail').value   = u.email;
     $('editUsuPass').value    = '';
     $('editUsuRolSel').value  = u.id_rol;
-    $('editUsuPasswordRow').style.display = '';
+    $('editUsuPasswordRow').style.display = 'none';
     showMsg($('editUsuMsg'), '');
     $('editUsuModal').classList.add('is-open');
   });
@@ -162,6 +247,7 @@ function abrirEditUsuario(id) {
 
 function cerrarEditUsuario() {
   $('editUsuModal')?.classList.remove('is-open');
+  resetEmailVerUI();
 }
 
 async function guardarUsuario() {
@@ -174,6 +260,12 @@ async function guardarUsuario() {
   if (nombre === '' || email === '' || id_rol === 0) return showMsg(msg, 'Nombre, correo y rol son requeridos.');
   if (!editingUserId && password === '') return showMsg(msg, 'La contraseña es requerida para usuarios nuevos.');
   if (password && password.length < 6) return showMsg(msg, 'La contraseña debe tener al menos 6 caracteres.');
+
+  // Verificación de correo obligatoria cuando es nuevo o cambió
+  const emailCambio = !editingUserId || email !== emailOriginalModal;
+  if (emailCambio && !emailVerificado) {
+    return showMsg(msg, 'Debes verificar el correo antes de guardar. Haz clic en "Verificar".');
+  }
 
   const body = { nombre, email, id_rol };
   if (editingUserId) body.id = editingUserId;
@@ -189,10 +281,22 @@ async function guardarUsuario() {
 }
 
 async function desactivarUsuario(id) {
-  if (!confirm('¿Desactivar este usuario? Podrá reactivarlo editándolo.')) return;
+  if (!confirm('¿Desactivar este usuario? Puede reactivarlo desde la lista.')) return;
   const res  = await fetch('api/usuarios.php?id=' + id, { method: 'DELETE' });
   const data = await res.json();
   if (!data.ok) return alert(data.error || 'Error al desactivar.');
+  cargarUsuarios();
+}
+
+async function reactivarUsuario(id) {
+  if (!confirm('¿Activar este usuario?')) return;
+  const res  = await fetch('api/usuarios.php', {
+    method:  'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ id, activo: 1 }),
+  });
+  const data = await res.json();
+  if (!data.ok) return alert(data.error || 'Error al activar.');
   cargarUsuarios();
 }
 
@@ -231,11 +335,11 @@ async function cargarRoles() {
 
   tbody.innerHTML = res.roles.map(r => `
     <tr>
-      <td>${r.nombre}</td>
+      <td>${r.nombre}${r.es_sistema ? ' <span class="badge warn" style="font-size:.7rem;">Sistema</span>' : ''}</td>
       <td>${r.descripcion || '—'}</td>
       <td>${r.permisos.length}</td>
       <td>
-        <button class="btn-sm btn-outline" onclick="abrirEditRol(${r.id})">Editar</button>
+        ${!r.es_sistema ? `<button class="btn-sm btn-outline" onclick="abrirEditRol(${r.id})">Editar</button>` : ''}
         ${!r.es_sistema ? `<button class="btn-sm btn-danger" onclick="eliminarRol(${r.id})">Eliminar</button>` : ''}
       </td>
     </tr>`).join('');
@@ -318,8 +422,16 @@ async function eliminarRol(id) {
 // ════════════════════════════════════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════════════════════════════════════
+function aplicarTabsCuentas(permisos) {
+  const esAdmin = permisos.includes('gestionar_cuentas');
+  document.querySelectorAll('[data-ctab="usuarios"], [data-ctab="roles"]').forEach(btn => {
+    btn.style.display = esAdmin ? '' : 'none';
+  });
+}
+
 export function setCuentasUsuario(u) {
   usuarioActual = u;
+  if (u?.permisos) aplicarTabsCuentas(u.permisos);
 }
 
 export function initCuentas() {
@@ -334,13 +446,72 @@ export function initCuentas() {
     });
   });
 
-  // Mi cuenta
+  // Mi cuenta — nombre
   $('mcGuardar')?.addEventListener('click', guardarMiCuenta);
+
+  // Mi cuenta — cambio de contraseña vía código
+  initMcPassFlow();
 
   // Usuarios
   $('btnNuevoUsuario')?.addEventListener('click', abrirModalNuevoUsuario);
   $('editUsuGuardar')?.addEventListener('click', guardarUsuario);
   $('editUsuCerrar')?.addEventListener('click', cerrarEditUsuario);
+
+  // Verificación de correo — resetear si el usuario cambia el email
+  $('editUsuEmail')?.addEventListener('input', () => {
+    const email = $('editUsuEmail').value.trim();
+    const cambio = !editingUserId || email !== emailOriginalModal;
+    if (cambio) resetEmailVerUI();
+  });
+
+  // Verificación de correo — paso 1: enviar código
+  $('btnVerificarEmail')?.addEventListener('click', async () => {
+    const email = $('editUsuEmail')?.value.trim() ?? '';
+    const msg   = $('editUsuMsg');
+    if (!email) return showMsg(msg, 'Ingresa el correo antes de verificar.');
+
+    const btn = $('btnVerificarEmail');
+    btn.disabled = true; btn.textContent = 'Enviando…';
+    try {
+      const res  = await fetch('api/auth.php?action=request_email_verify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!data.ok) return showMsg(msg, data.error || 'Error al enviar código.');
+      showMsg(msg, '');
+      $('editUsuEmailVerRow').hidden = false;
+      $('editUsuEmailOkRow').hidden  = true;
+      if ($('editUsuEmailNota')) $('editUsuEmailNota').textContent = `Código enviado a ${email}.`;
+    } finally {
+      btn.disabled = false; btn.textContent = 'Verificar';
+    }
+  });
+
+  // Verificación de correo — paso 2: confirmar código
+  $('btnConfirmarEmail')?.addEventListener('click', async () => {
+    const email  = $('editUsuEmail')?.value.trim()      ?? '';
+    const codigo = $('editUsuEmailCodigo')?.value.trim() ?? '';
+    const msg    = $('editUsuMsg');
+    if (!codigo) return showMsg(msg, 'Ingresa el código recibido.');
+
+    const btn = $('btnConfirmarEmail');
+    btn.disabled = true; btn.textContent = 'Confirmando…';
+    try {
+      const res  = await fetch('api/auth.php?action=verify_email', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, codigo }),
+      });
+      const data = await res.json();
+      if (!data.ok) return showMsg(msg, data.error || 'Código incorrecto.');
+      emailVerificado = true;
+      showMsg(msg, '');
+      $('editUsuEmailVerRow').hidden = true;
+      $('editUsuEmailOkRow').hidden  = false;
+    } finally {
+      btn.disabled = false; btn.textContent = 'Confirmar';
+    }
+  });
 
   // Roles
   $('btnNuevoRol')?.addEventListener('click', abrirNuevoRol);
@@ -350,6 +521,7 @@ export function initCuentas() {
   // Exponer funciones globales para los botones generados dinámicamente
   window.abrirEditUsuario  = abrirEditUsuario;
   window.desactivarUsuario = desactivarUsuario;
+  window.reactivarUsuario  = reactivarUsuario;
   window.abrirEditRol      = abrirEditRol;
   window.eliminarRol       = eliminarRol;
 
@@ -358,6 +530,7 @@ export function initCuentas() {
     if (e.detail?.id === 'cuentas') {
       switchCuentasTab('mi-cuenta');
       cargarMiCuenta();
+      if (usuarioActual?.permisos) aplicarTabsCuentas(usuarioActual.permisos);
     }
   });
 }

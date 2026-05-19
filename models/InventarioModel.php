@@ -15,17 +15,20 @@ final class InventarioModel
         $st = $this->pdo->query(
             'SELECT
                 p.idProducto,
+                p.codigoOEM,
                 p.nombre,
                 p.marca,
+                p.modelo,
                 p.categoria,
-                p.codigoOEM,
+                p.lineaVehiculo,
+                p.condicionProducto,
                 p.precioInicial,
-                p.estado,
                 COALESCE(SUM(i.entrada - i.salida), 0) AS stock
              FROM Producto p
              LEFT JOIN Inventario i ON i.idProducto = p.idProducto
-             GROUP BY p.idProducto, p.nombre, p.marca, p.categoria, p.codigoOEM, p.precioInicial, p.estado
-             ORDER BY nombre ASC, idProducto ASC'
+             GROUP BY p.idProducto, p.codigoOEM, p.nombre, p.marca, p.modelo,
+                      p.categoria, p.lineaVehiculo, p.condicionProducto, p.precioInicial
+             ORDER BY p.nombre ASC, p.idProducto ASC'
         );
         return $st->fetchAll();
     }

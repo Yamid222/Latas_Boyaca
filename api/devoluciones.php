@@ -27,7 +27,16 @@ if ($method === 'GET') {
         $st = $pdo->prepare(
             'SELECT v.id_venta, DATE_FORMAT(v.fecha,\'%Y-%m-%d %H:%i\') AS fecha, v.total,
                     d.id_detalle, d.idProducto AS id_producto, p.nombre AS producto,
-                    d.cantidad, d.precio AS precio_unitario
+                    d.cantidad, d.precio AS precio_unitario,
+                    d.cantidad - IFNULL((
+                        SELECT SUM(dd.cantidad)
+                        FROM lb_devolucion dev
+                        JOIN lb_devolucion_detalle dd ON dd.id_devolucion = dev.id
+                        WHERE dev.tipo = \'venta\'
+                          AND dev.id_referencia = v.id_venta
+                          AND dev.estado != \'rechazada\'
+                          AND dd.id_producto = d.idProducto
+                    ), 0) AS disponible
              FROM ventas v
              JOIN detalle_venta d ON d.id_venta = v.id_venta
              JOIN Producto p ON p.idProducto = d.idProducto
@@ -38,12 +47,15 @@ if ($method === 'GET') {
         if (!$rows) lb_json(['ok' => false, 'error' => "Venta #$id no encontrada."], 404);
 
         $cabecera = ['id_venta' => $rows[0]['id_venta'], 'fecha' => $rows[0]['fecha'], 'total' => $rows[0]['total']];
-        $detalle  = array_map(fn($r) => [
+        $detalle  = array_values(array_filter(array_map(fn($r) => [
             'id_producto'    => (int) $r['id_producto'],
             'producto'       => $r['producto'],
             'cantidad'       => (int) $r['cantidad'],
+            'disponible'     => (int) $r['disponible'],
             'precio_unitario'=> (float) $r['precio_unitario'],
-        ], $rows);
+        ], $rows), fn($d) => $d['disponible'] > 0));
+
+        if (!$detalle) lb_json(['ok' => false, 'error' => "Todos los productos de esta venta ya fueron devueltos."], 422);
         lb_json(['ok' => true, 'cabecera' => $cabecera, 'detalle' => $detalle]);
     }
 
@@ -55,7 +67,17 @@ if ($method === 'GET') {
         $st = $pdo->prepare(
             'SELECT c.idCompra, DATE_FORMAT(c.fecha,\'%Y-%m-%d\') AS fecha,
                     d.idProducto AS id_producto, p.nombre AS producto,
-                    d.cantidad, d.precioCompra AS precio_unitario
+                    d.cantidad, d.precioCompra AS precio_unitario,
+                    IFNULL((SELECT SUM(i.entrada - i.salida) FROM Inventario i WHERE i.idProducto = d.idProducto), 0) AS stock_actual,
+                    d.cantidad - IFNULL((
+                        SELECT SUM(dd.cantidad)
+                        FROM lb_devolucion dev
+                        JOIN lb_devolucion_detalle dd ON dd.id_devolucion = dev.id
+                        WHERE dev.tipo = \'compra\'
+                          AND dev.id_referencia = c.idCompra
+                          AND dev.estado != \'rechazada\'
+                          AND dd.id_producto = d.idProducto
+                    ), 0) AS disponible
              FROM Compra c
              JOIN DetalleCompra d ON d.idCompra = c.idCompra
              JOIN Producto p ON p.idProducto = d.idProducto
@@ -66,13 +88,62 @@ if ($method === 'GET') {
         if (!$rows) lb_json(['ok' => false, 'error' => "Compra #$id no encontrada."], 404);
 
         $cabecera = ['id_compra' => $rows[0]['idCompra'], 'fecha' => $rows[0]['fecha']];
-        $detalle  = array_map(fn($r) => [
+        $detalle  = array_values(array_filter(array_map(fn($r) => [
             'id_producto'    => (int) $r['id_producto'],
             'producto'       => $r['producto'],
             'cantidad'       => (int) $r['cantidad'],
+            'disponible'     => (int) $r['disponible'],
             'precio_unitario'=> (float) $r['precio_unitario'],
-        ], $rows);
+            'stock_actual'   => (int) $r['stock_actual'],
+        ], $rows), fn($d) => $d['disponible'] > 0));
+
+        if (!$detalle) lb_json(['ok' => false, 'error' => "Todos los productos de esta compra ya fueron devueltos."], 422);
         lb_json(['ok' => true, 'cabecera' => $cabecera, 'detalle' => $detalle]);
+    }
+
+    // Trazabilidad: todas las devoluciones de una venta o compra específica
+    if ($action === 'by_ref') {
+        $tipo = trim($_GET['tipo'] ?? '');
+        $id   = (int)($_GET['id']  ?? 0);
+        if (!in_array($tipo, ['venta', 'compra'], true) || !$id)
+            lb_json(['ok' => false, 'error' => 'tipo e id requeridos.'], 422);
+
+        $st = $pdo->prepare(
+            'SELECT d.id, d.estado,
+                    DATE_FORMAT(d.fecha,\'%Y-%m-%d %H:%i\') AS fecha,
+                    d.motivo, d.notas,
+                    dd.id_producto, p.nombre AS producto,
+                    dd.cantidad, dd.precio_unitario
+             FROM lb_devolucion d
+             JOIN lb_devolucion_detalle dd ON dd.id_devolucion = d.id
+             JOIN Producto p ON p.idProducto = dd.id_producto
+             WHERE d.tipo = ? AND d.id_referencia = ?
+             ORDER BY d.fecha DESC, d.id DESC, dd.id ASC'
+        );
+        $st->execute([$tipo, $id]);
+        $rows = $st->fetchAll();
+
+        $devs = [];
+        foreach ($rows as $r) {
+            $did = (int) $r['id'];
+            if (!isset($devs[$did])) {
+                $devs[$did] = [
+                    'id'        => $did,
+                    'estado'    => $r['estado'],
+                    'fecha'     => $r['fecha'],
+                    'motivo'    => $r['motivo'],
+                    'notas'     => $r['notas'],
+                    'productos' => [],
+                ];
+            }
+            $devs[$did]['productos'][] = [
+                'id_producto'     => (int) $r['id_producto'],
+                'producto'        => $r['producto'],
+                'cantidad'        => (int) $r['cantidad'],
+                'precio_unitario' => (float) $r['precio_unitario'],
+            ];
+        }
+        lb_json(['ok' => true, 'devoluciones' => array_values($devs)]);
     }
 
     // Listar devoluciones con filtros opcionales
@@ -127,11 +198,26 @@ if ($method === 'POST') {
             lb_json(['ok' => false, 'error' => 'Todas las cantidades deben ser mayores a 0.'], 422);
     }
 
+    $restituir_stock = isset($b['restituir_stock']) ? (int)(bool)$b['restituir_stock'] : 1;
+
+    if ($tipo === 'compra') {
+        $stk = $pdo->prepare(
+            'SELECT IFNULL(SUM(entrada - salida), 0) AS stock FROM Inventario WHERE idProducto = ?'
+        );
+        foreach ($detalle as $d) {
+            $stk->execute([(int)($d['id_producto'] ?? 0)]);
+            $stock = (int)$stk->fetchColumn();
+            if ($stock < (int)($d['cantidad'] ?? 0))
+                lb_json(['ok' => false, 'error' => 'Stock insuficiente para devolver al proveedor (disponible: ' . $stock . ').'], 422);
+        }
+    }
+
     try {
         $pdo->beginTransaction();
+        $uid = isset($_SESSION['lb_uid']) ? (int)$_SESSION['lb_uid'] : null;
         $pdo->prepare(
-            'INSERT INTO lb_devolucion (tipo, id_referencia, motivo, notas) VALUES (?,?,?,?)'
-        )->execute([$tipo, $id_referencia, $motivo, $notas ?: null]);
+            'INSERT INTO lb_devolucion (tipo, id_referencia, motivo, notas, restituir_stock, creado_por) VALUES (?,?,?,?,?,?)'
+        )->execute([$tipo, $id_referencia, $motivo, $notas ?: null, $restituir_stock, $uid]);
         $id_dev = (int)$pdo->lastInsertId();
 
         $stDet = $pdo->prepare(
@@ -165,7 +251,7 @@ if ($method === 'PUT') {
         lb_json(['ok' => false, 'error' => 'estado debe ser aprobada o rechazada.'], 422);
 
     // Verificar estado actual
-    $dev = $pdo->prepare('SELECT tipo, estado FROM lb_devolucion WHERE id = ?');
+    $dev = $pdo->prepare('SELECT tipo, estado, restituir_stock FROM lb_devolucion WHERE id = ?');
     $dev->execute([$id]);
     $dev = $dev->fetch();
     if (!$dev) lb_json(['ok' => false, 'error' => 'Devolución no encontrada.'], 404);
@@ -174,20 +260,44 @@ if ($method === 'PUT') {
 
     try {
         $pdo->beginTransaction();
-        $pdo->prepare('UPDATE lb_devolucion SET estado = ? WHERE id = ?')->execute([$estado, $id]);
+        $uid = isset($_SESSION['lb_uid']) ? (int)$_SESSION['lb_uid'] : null;
+        if ($estado === 'aprobada') {
+            $pdo->prepare('UPDATE lb_devolucion SET estado = ?, aprobado_por = ? WHERE id = ?')->execute([$estado, $uid, $id]);
+        } else {
+            $pdo->prepare('UPDATE lb_devolucion SET estado = ? WHERE id = ?')->execute([$estado, $id]);
+        }
 
         if ($estado === 'aprobada') {
-            // Actualizar inventario según el tipo
             $detalles = $pdo->prepare('SELECT id_producto, cantidad FROM lb_devolucion_detalle WHERE id_devolucion = ?');
             $detalles->execute([$id]);
-            $stInv = $pdo->prepare(
-                'INSERT INTO Inventario (idProducto, cantidad, entrada, salida, stock)
-                 VALUES (?, ?, ?, ?, 0)'
-            );
-            foreach ($detalles->fetchAll() as $d) {
-                $entrada = $dev['tipo'] === 'venta' ? $d['cantidad'] : 0;
-                $salida  = $dev['tipo'] === 'compra' ? $d['cantidad'] : 0;
-                $stInv->execute([$d['id_producto'], $d['cantidad'], $entrada, $salida]);
+            $rows = $detalles->fetchAll();
+
+            if ($dev['tipo'] === 'compra') {
+                $stk = $pdo->prepare(
+                    'SELECT IFNULL(SUM(entrada - salida), 0) AS stock FROM Inventario WHERE idProducto = ?'
+                );
+                foreach ($rows as $d) {
+                    $stk->execute([$d['id_producto']]);
+                    $stock = (int)$stk->fetchColumn();
+                    if ($stock < (int)$d['cantidad']) {
+                        $pdo->rollBack();
+                        lb_json(['ok' => false, 'error' => 'Stock insuficiente para aprobar la devolución de compra (disponible: ' . $stock . ', requerido: ' . $d['cantidad'] . ').'], 422);
+                    }
+                }
+            }
+
+            $actualizarInventario = $dev['tipo'] === 'compra' || (bool)$dev['restituir_stock'];
+
+            if ($actualizarInventario) {
+                $stInv = $pdo->prepare(
+                    'INSERT INTO Inventario (idProducto, cantidad, entrada, salida, stock)
+                     VALUES (?, ?, ?, ?, 0)'
+                );
+                foreach ($rows as $d) {
+                    $entrada = $dev['tipo'] === 'venta' ? $d['cantidad'] : 0;
+                    $salida  = $dev['tipo'] === 'compra' ? $d['cantidad'] : 0;
+                    $stInv->execute([$d['id_producto'], $d['cantidad'], $entrada, $salida]);
+                }
             }
         }
 

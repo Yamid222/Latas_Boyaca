@@ -87,6 +87,13 @@ if ($method === 'PUT') {
 
     if ($id === 0) lb_json(['ok' => false, 'error' => 'id requerido.'], 422);
 
+    $rowCheck = $pdo->prepare('SELECT es_sistema FROM lb_rol WHERE id = ?');
+    $rowCheck->execute([$id]);
+    $rolCheck = $rowCheck->fetch();
+    if ($rolCheck && $rolCheck['es_sistema']) {
+        lb_json(['ok' => false, 'error' => 'El rol Super Admin no puede modificarse.'], 403);
+    }
+
     try {
         $pdo->beginTransaction();
         if ($nombre !== '') {

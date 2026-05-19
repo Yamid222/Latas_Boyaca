@@ -158,11 +158,7 @@ function eliminar(PDO $pdo, int $id): array
     return ['ok' => true];
 }
 
-try {
-    $pdo = lb_pdo();
-} catch (Throwable $e) {
-    lb_json(['ok' => false, 'error' => 'Error de base de datos: ' . $e->getMessage()], 500);
-}
+$pdo = lb_pdo();
 
 try {
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -189,5 +185,5 @@ try {
     }
     lb_json(['ok' => false, 'error' => 'Método no permitido.'], 405);
 } catch (Throwable $e) {
-    lb_json(['ok' => false, 'error' => 'Error en categorías: ' . $e->getMessage()], 500);
+    lb_json_sql_error($e, 'Error en categorías:');
 }

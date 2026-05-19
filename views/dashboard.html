@@ -753,6 +753,7 @@
             <div class="lb-modal-panel panel" role="dialog">
               <h2 id="detalleCompraTitulo">Detalle</h2>
               <p id="detalleCompraMeta" class="compras-meta"></p>
+              <p id="detalleCompraTraz" class="compras-sub" style="margin-bottom:.75rem;font-size:.82rem;color:var(--text-muted);"></p>
               <div class="table-wrap">
                 <table class="data-table">
                   <thead>
@@ -770,6 +771,7 @@
                 <span>Total</span>
                 <strong id="comprasDetalleTotal">$ 0</strong>
               </div>
+              <div id="compraDetalleDevoluciones"></div>
               <div class="compras-modal-actions">
                 <button type="button" class="btn btn-primary btn-inline" data-close-modal>Cerrar</button>
               </div>
@@ -866,7 +868,8 @@
             <div class="lb-modal-backdrop" data-close-modal></div>
             <div class="lb-modal-panel panel" role="dialog">
               <h2>Detalle de venta</h2>
-              <p id="ventaVerHead" class="compras-sub" style="margin-bottom:1rem;"></p>
+              <p id="ventaVerHead" class="compras-sub" style="margin-bottom:.4rem;"></p>
+              <p id="ventaVerTraz" class="compras-sub" style="margin-bottom:1rem;font-size:.82rem;color:var(--text-muted);"></p>
               <div class="table-wrap compras-table-lines">
                 <table class="data-table">
                   <thead>
@@ -881,6 +884,7 @@
                   <tbody id="ventaVerLineasBody"></tbody>
                 </table>
               </div>
+              <div id="ventaVerDevoluciones"></div>
               <div class="compras-modal-actions">
                 <button type="button" class="btn btn-secondary btn-inline" data-close-modal>Cerrar</button>
               </div>
@@ -1157,6 +1161,7 @@
                 </div>
                 <button type="button" class="btn btn-primary btn-inline" id="repBtnCompras">Consultar</button>
                 <button type="button" class="btn btn-secondary btn-inline" id="repBtnCompPDF">Exportar PDF</button>
+                <button type="button" class="btn btn-ghost btn-inline" id="repBtnCompTraz" aria-pressed="false" title="Mostrar/ocultar quién realizó cada operación">Trazabilidad</button>
               </div>
             </div>
             <div class="stats-grid" id="repCompStats" style="margin-bottom:1.25rem;"></div>
@@ -1164,7 +1169,7 @@
               <h2>Historial de compras</h2>
               <div class="table-wrap">
                 <table class="data-table">
-                  <thead><tr><th># Compra</th><th>Fecha</th><th>Proveedor</th><th>Artículos</th><th>Total</th></tr></thead>
+                  <thead><tr><th># Compra</th><th>Fecha</th><th>Proveedor</th><th>Artículos</th><th>Total</th><th id="repCompTrazTh" hidden>Usuario</th></tr></thead>
                   <tbody id="repCompBody"></tbody>
                 </table>
               </div>
@@ -1198,6 +1203,7 @@
                 </div>
                 <button type="button" class="btn btn-primary btn-inline" id="repBtnVentas">Consultar</button>
                 <button type="button" class="btn btn-secondary btn-inline" id="repBtnVentPDF">Exportar PDF</button>
+                <button type="button" class="btn btn-ghost btn-inline" id="repBtnVentTraz" aria-pressed="false" title="Mostrar/ocultar quién realizó cada operación">Trazabilidad</button>
               </div>
             </div>
             <div class="stats-grid" id="repVentStats" style="margin-bottom:1.25rem;"></div>
@@ -1205,7 +1211,7 @@
               <h2>Historial de ventas</h2>
               <div class="table-wrap">
                 <table class="data-table">
-                  <thead><tr><th># Venta</th><th>Fecha</th><th>Tipo de pago</th><th>Total</th></tr></thead>
+                  <thead><tr><th># Venta</th><th>Fecha</th><th>Tipo de pago</th><th>Total</th><th id="repVentTrazTh" hidden>Usuario</th></tr></thead>
                   <tbody id="repVentBody"></tbody>
                 </table>
               </div>
@@ -1238,7 +1244,8 @@
                   <div class="field" style="margin:0;"><label for="repProdHasta">Hasta</label><input type="date" id="repProdHasta" class="compras-control"></div>
                 </div>
                 <button type="button" class="btn btn-primary btn-inline" id="repBtnProd">Filtrar</button>
-                <button type="button" class="btn btn-secondary btn-inline" id="repBtnProdPDF">Exportar PDF</button>
+                <button type="button" class="btn btn-secondary btn-inline" id="repBtnProdTopPDF">PDF Top 20</button>
+                <button type="button" class="btn btn-secondary btn-inline" id="repBtnProdSinPDF">PDF Sin ventas</button>
               </div>
             </div>
             <div class="panel" style="margin-bottom:1.25rem;">
@@ -1366,6 +1373,13 @@
               </div>
 
               <div id="devProductosArea"></div>
+
+              <div id="devRestituirRow" style="margin:.75rem 0;padding:.5rem .75rem;background:var(--surface-2);border-radius:.5rem;display:none;">
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
+                  <input type="checkbox" id="devRestituirStock" checked>
+                  <span>Restituir stock al aprobar (devolver unidades al inventario)</span>
+                </label>
+              </div>
 
               <div class="compras-form-grid" style="margin-top:.75rem;">
                 <div class="field compras-field-span-2">
@@ -1542,7 +1556,7 @@
                   <tr><td>Rol</td><td id="mcRol">—</td></tr>
                 </tbody>
               </table>
-              <h3 style="margin-bottom:.75rem;">Editar datos</h3>
+              <h3 style="margin-bottom:.75rem;">Editar nombre</h3>
               <div class="compras-form-grid" style="max-width:100%;">
                 <div class="field compras-field-span-2">
                   <label for="mcNombreI">Nombre</label>
@@ -1552,18 +1566,47 @@
                   <label for="mcEmailI">Correo (solo lectura)</label>
                   <input type="email" id="mcEmailI" class="compras-control" readonly style="opacity:.6;cursor:not-allowed;">
                 </div>
-                <div class="field compras-field-span-2">
-                  <label for="mcPasswordI">Nueva contraseña <small style="font-weight:400;">(dejar vacío para no cambiar)</small></label>
-                  <input type="password" id="mcPasswordI" class="compras-control" minlength="6" placeholder="Mínimo 6 caracteres">
-                </div>
-                <div class="field compras-field-span-2">
-                  <label for="mcConfirmI">Confirmar contraseña</label>
-                  <input type="password" id="mcConfirmI" class="compras-control" minlength="6" placeholder="Repite la nueva contraseña">
-                </div>
               </div>
               <p class="form-msg" id="mcMsg" hidden></p>
               <div style="margin-top:.75rem;">
-                <button type="button" class="btn btn-primary btn-inline" id="mcGuardar">Guardar cambios</button>
+                <button type="button" class="btn btn-primary btn-inline" id="mcGuardar">Guardar nombre</button>
+              </div>
+
+              <hr style="margin:1.5rem 0;opacity:.2;">
+              <h3 style="margin-bottom:.75rem;">Cambiar contraseña</h3>
+
+              <!-- Paso 0: botón enviar código -->
+              <div id="mcPassStep0">
+                <p style="font-size:.9rem;color:var(--text-muted);margin-bottom:.75rem;">
+                  Se enviará un código de verificación a tu correo registrado.
+                </p>
+                <button type="button" class="btn btn-secondary btn-inline" id="mcPassEnviar">Enviar código</button>
+              </div>
+
+              <!-- Paso 1: código + nueva contraseña -->
+              <div id="mcPassStep1" hidden>
+                <p class="form-msg ok" id="mcPassNota" style="display:block;margin-bottom:.75rem;"></p>
+                <div class="compras-form-grid" style="max-width:100%;">
+                  <div class="field compras-field-span-2">
+                    <label for="mcPassCodigo">Código de 6 dígitos</label>
+                    <input type="text" id="mcPassCodigo" class="compras-control" maxlength="6"
+                           placeholder="123456" autocomplete="one-time-code"
+                           style="letter-spacing:.25em;font-size:1.1rem;text-align:center;">
+                  </div>
+                  <div class="field compras-field-span-2">
+                    <label for="mcPassNueva">Nueva contraseña</label>
+                    <input type="password" id="mcPassNueva" class="compras-control" minlength="6" placeholder="Mínimo 6 caracteres">
+                  </div>
+                  <div class="field compras-field-span-2">
+                    <label for="mcPassConfirm">Confirmar contraseña</label>
+                    <input type="password" id="mcPassConfirm" class="compras-control" minlength="6" placeholder="Repite la contraseña">
+                  </div>
+                </div>
+                <p class="form-msg" id="mcPassMsg" hidden></p>
+                <div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap;">
+                  <button type="button" class="btn btn-primary btn-inline" id="mcPassVerificar">Cambiar contraseña</button>
+                  <button type="button" class="btn btn-secondary btn-inline" id="mcPassCancelar">Cancelar</button>
+                </div>
               </div>
             </div>
           </div>
@@ -1605,11 +1648,28 @@
                   </div>
                   <div class="field compras-field-span-2">
                     <label for="editUsuEmail">Correo</label>
-                    <input type="email" id="editUsuEmail" class="compras-control" maxlength="150">
+                    <div style="display:flex;gap:.5rem;align-items:center;">
+                      <input type="email" id="editUsuEmail" class="compras-control" maxlength="150" style="flex:1;min-width:0;">
+                      <button type="button" class="btn btn-secondary btn-inline" id="btnVerificarEmail" style="white-space:nowrap;flex-shrink:0;">Verificar</button>
+                    </div>
+                  </div>
+                  <!-- Paso de verificación de correo -->
+                  <div class="field compras-field-span-2" id="editUsuEmailVerRow" hidden>
+                    <label for="editUsuEmailCodigo">Código enviado al correo</label>
+                    <div style="display:flex;gap:.5rem;align-items:center;">
+                      <input type="text" id="editUsuEmailCodigo" class="compras-control" maxlength="6"
+                             placeholder="123456" autocomplete="one-time-code"
+                             style="letter-spacing:.22em;text-align:center;font-size:1.05rem;flex:1;min-width:0;">
+                      <button type="button" class="btn btn-primary btn-inline" id="btnConfirmarEmail" style="white-space:nowrap;flex-shrink:0;">Confirmar</button>
+                    </div>
+                    <small id="editUsuEmailNota" style="color:var(--text-muted);font-size:.82rem;margin-top:.3rem;display:block;"></small>
+                  </div>
+                  <div class="field compras-field-span-2" id="editUsuEmailOkRow" hidden>
+                    <p style="margin:0;color:var(--ok,#22c55e);font-size:.88rem;font-weight:600;">✓ Correo verificado</p>
                   </div>
                   <div class="field compras-field-span-2" id="editUsuPasswordRow">
-                    <label for="editUsuPass">Contraseña <small style="font-weight:400;">(vacío = no cambiar)</small></label>
-                    <input type="password" id="editUsuPass" class="compras-control" minlength="6">
+                    <label for="editUsuPass">Contraseña <small style="font-weight:400;">(solo al crear)</small></label>
+                    <input type="password" id="editUsuPass" class="compras-control" minlength="6" placeholder="Mínimo 6 caracteres">
                   </div>
                   <div class="field compras-field-span-2">
                     <label for="editUsuRolSel">Rol</label>

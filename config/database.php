@@ -1,7 +1,9 @@
 <?php
 /**
- * Conexión PDO a MySQL — LATAS_BOYACA
- * Ajusta usuario/clave si tu XAMPP usa otras credenciales.
+ * Conexión PDO a MySQL — base `latas_boyaca` ya creada en el servidor.
+ * No crea ni elimina la base de datos; solo abre una sesión contra ella.
+ *
+ * Variables de entorno opcionales: LB_DB_HOST, LB_DB_PORT, LB_DB_NAME, LB_DB_USER, LB_DB_PASS
  */
 declare(strict_types=1);
 
@@ -13,12 +15,13 @@ function lb_get_pdo(): PDO
     }
 
     $host = getenv('LB_DB_HOST') ?: '127.0.0.1';
+    $port = getenv('LB_DB_PORT') ?: '3306';
     $name = getenv('LB_DB_NAME') ?: 'latas_boyaca';
     $user = getenv('LB_DB_USER') ?: 'root';
-    $pass = getenv('LB_DB_PASS') ?: '';
+    $pass = getenv('LB_DB_PASS') !== false ? (string) getenv('LB_DB_PASS') : '';
     $charset = 'utf8mb4';
 
-    $dsn = "mysql:host={$host};dbname={$name};charset={$charset}";
+    $dsn = "mysql:host={$host};port={$port};dbname={$name};charset={$charset}";
     $opts = [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,

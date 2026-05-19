@@ -5,15 +5,20 @@
  * GET  ?catalog=1           → importadores + productos
  * GET                       → listar compras (total = SUM(valorTotal))
  * GET  ?id=N                → detalle compra + líneas
- * POST                      → crear (JSON: idImportador, fecha?, estado?: pendiente|recibida, detalles[])
- * POST ?action=update&id=N  → editar (si está recibida, ajusta inventario según diff de cantidades)
- * POST ?action=delete&id=N  → eliminar compra (si estaba recibida, salidas inventario sin tope de stock) + registro CompraAnulada
- * POST ?action=recibir&id=N → recibir: stock + Inventario + estado recibida
+ * POST                      → crear (JSON: idImportador, fecha?, detalles[]) — actualiza inventario inmediatamente
+ * POST ?action=update&id=N  → editar — ajusta inventario según diff de cantidades
+ * POST ?action=delete&id=N  → eliminar compra — revierte inventario + registro CompraAnulada
  */
 declare(strict_types=1);
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'httponly' => true, 'samesite' => 'Strict']);
+    session_start();
+}
+
 require_once dirname(__DIR__) . '/config/database.php';
 require_once __DIR__ . '/schema_compra_anulada.php';
+require_once __DIR__ . '/lib.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -50,7 +55,7 @@ function catalogo(PDO $pdo): array
 
 function listar(PDO $pdo, ?int $filtroImportador, ?string $busqueda): array
 {
-    $sql = 'SELECT DISTINCT c.idCompra, i.nombre AS nombreImportador, c.estado, c.fecha, c.idImportador,
+    $sql = 'SELECT DISTINCT c.idCompra, i.nombre AS nombreImportador, c.fecha, c.idImportador,
             COALESCE((SELECT SUM(dc.valorTotal) FROM DetalleCompra dc WHERE dc.idCompra = c.idCompra), 0) AS total
             FROM Compra c
             INNER JOIN Importador i ON i.idImportador = c.idImportador';
@@ -98,9 +103,14 @@ function listar(PDO $pdo, ?int $filtroImportador, ?string $busqueda): array
 function detalle(PDO $pdo, int $idCompra): array
 {
     $st = $pdo->prepare(
-        'SELECT c.idCompra, c.idImportador, c.fecha, c.estado, i.nombre AS nombreImportador
+        'SELECT c.idCompra, c.idImportador, c.fecha, i.nombre AS nombreImportador,
+                c.creado_por, uc.nombre AS creado_por_nombre,
+                c.modificado_por, um.nombre AS modificado_por_nombre,
+                c.modificado_en
          FROM Compra c
          INNER JOIN Importador i ON i.idImportador = c.idImportador
+         LEFT JOIN lb_usuario uc ON uc.id = c.creado_por
+         LEFT JOIN lb_usuario um ON um.id = c.modificado_por
          WHERE c.idCompra = ?'
     );
     $st->execute([$idCompra]);
@@ -241,7 +251,6 @@ function registrarCompraAnulada(
     float $total,
     array $detalleFilas
 ): void {
-    lb_ensure_compra_anulada($pdo);
     $ins = $pdo->prepare(
         'INSERT INTO CompraAnulada (idCompra, anulado_en, fecha_compra, idImportador, nombre_importador, estado, total, detalle_json)
          VALUES (?, NOW(), ?, ?, ?, ?, ?, ?)'
@@ -300,24 +309,11 @@ function aplicarAjusteInventarioCompra(PDO $pdo, array $deltas): ?string
     return null;
 }
 
-function normalizarEstadoCompra(string $estado): string
-{
-    $estado = trim($estado);
-    if ($estado === 'en_transito') {
-        return 'pendiente';
-    }
-    return $estado;
-}
-
 function crear(PDO $pdo, array $in): array
 {
     $idImp = isset($in['idImportador']) ? (int) $in['idImportador'] : 0;
     $detalles = isset($in['detalles']) && is_array($in['detalles']) ? $in['detalles'] : [];
     $fecha = isset($in['fecha']) && $in['fecha'] !== '' ? (string) $in['fecha'] : date('Y-m-d');
-    $estado = isset($in['estado']) ? normalizarEstadoCompra((string) $in['estado']) : 'pendiente';
-    if (!in_array($estado, ['pendiente', 'recibida'], true)) {
-        return ['ok' => false, 'error' => 'Estado inválido. Use pendiente o recibida.'];
-    }
 
     if ($idImp <= 0) {
         return ['ok' => false, 'error' => 'Seleccione un importador.'];
@@ -329,13 +325,12 @@ function crear(PDO $pdo, array $in): array
 
     $pdo->beginTransaction();
     try {
-        $st = $pdo->prepare('INSERT INTO Compra (idImportador, fecha, estado) VALUES (?, ?, ?)');
-        $st->execute([$idImp, $fecha, $estado]);
+        $uid = isset($_SESSION['lb_uid']) ? (int) $_SESSION['lb_uid'] : null;
+        $st = $pdo->prepare('INSERT INTO Compra (idImportador, fecha, estado, creado_por) VALUES (?, ?, ?, ?)');
+        $st->execute([$idImp, $fecha, 'recibida', $uid]);
         $idCompra = (int) $pdo->lastInsertId();
         insertarDetalles($pdo, $idCompra, $detalles);
-        if ($estado === 'recibida') {
-            registrarEntradasInventario($pdo, $detalles);
-        }
+        registrarEntradasInventario($pdo, $detalles);
         $pdo->commit();
         return ['ok' => true, 'idCompra' => $idCompra];
     } catch (Throwable $e) {
@@ -367,46 +362,31 @@ function actualizar(PDO $pdo, int $idCompra, array $in): array
             $pdo->rollBack();
             return ['ok' => false, 'error' => 'Compra no encontrada'];
         }
-        $estadoActual = (string) $row['estado'];
 
-        if ($estadoActual === 'recibida') {
-            $estado = 'recibida';
-        } else {
-            $estado = isset($in['estado']) ? normalizarEstadoCompra((string) $in['estado']) : 'pendiente';
-            if (!in_array($estado, ['pendiente', 'recibida'], true)) {
-                $pdo->rollBack();
-                return ['ok' => false, 'error' => 'Estado inválido. Use pendiente o recibida.'];
-            }
+        $stOld = $pdo->prepare('SELECT idProducto, cantidad FROM DetalleCompra WHERE idCompra = ?');
+        $stOld->execute([$idCompra]);
+        $lineasViejas = $stOld->fetchAll();
+
+        $oldMap = (string) $row['estado'] === 'recibida'
+            ? sumarCantidadesPorProducto($lineasViejas)
+            : [];
+        $newMap = sumarCantidadesPorProducto($detalles);
+        $allPids = array_unique(array_merge(array_keys($oldMap), array_keys($newMap)));
+        $deltas = [];
+        foreach ($allPids as $pid) {
+            $deltas[$pid] = ($newMap[$pid] ?? 0) - ($oldMap[$pid] ?? 0);
+        }
+        $invErr = aplicarAjusteInventarioCompra($pdo, $deltas);
+        if ($invErr !== null) {
+            $pdo->rollBack();
+            return ['ok' => false, 'error' => $invErr];
         }
 
-        if ($estadoActual === 'recibida') {
-            $stOld = $pdo->prepare('SELECT idProducto, cantidad FROM DetalleCompra WHERE idCompra = ?');
-            $stOld->execute([$idCompra]);
-            $lineasViejas = $stOld->fetchAll();
-            $oldMap = sumarCantidadesPorProducto($lineasViejas);
-            $newMap = sumarCantidadesPorProducto($detalles);
-            $allPids = array_unique(array_merge(array_keys($oldMap), array_keys($newMap)));
-            $deltas = [];
-            foreach ($allPids as $pid) {
-                $o = $oldMap[$pid] ?? 0;
-                $n = $newMap[$pid] ?? 0;
-                $deltas[$pid] = $n - $o;
-            }
-            $invErr = aplicarAjusteInventarioCompra($pdo, $deltas);
-            if ($invErr !== null) {
-                $pdo->rollBack();
-                return ['ok' => false, 'error' => $invErr];
-            }
-        }
-
-        $up = $pdo->prepare('UPDATE Compra SET idImportador = ?, fecha = ?, estado = ? WHERE idCompra = ?');
-        $up->execute([$idImp, $fecha, $estado, $idCompra]);
-        $del = $pdo->prepare('DELETE FROM DetalleCompra WHERE idCompra = ?');
-        $del->execute([$idCompra]);
+        $uid = isset($_SESSION['lb_uid']) ? (int) $_SESSION['lb_uid'] : null;
+        $up = $pdo->prepare('UPDATE Compra SET idImportador = ?, fecha = ?, estado = ?, modificado_por = ?, modificado_en = NOW() WHERE idCompra = ?');
+        $up->execute([$idImp, $fecha, 'recibida', $uid, $idCompra]);
+        $pdo->prepare('DELETE FROM DetalleCompra WHERE idCompra = ?')->execute([$idCompra]);
         insertarDetalles($pdo, $idCompra, $detalles);
-        if ($estadoActual !== 'recibida' && $estado === 'recibida') {
-            registrarEntradasInventario($pdo, $detalles);
-        }
         $pdo->commit();
         return ['ok' => true, 'idCompra' => $idCompra];
     } catch (Throwable $e) {
@@ -423,6 +403,7 @@ function eliminar(PDO $pdo, int $idCompra): array
         return ['ok' => false, 'error' => 'ID inválido.'];
     }
 
+    lb_ensure_compra_anulada($pdo);
     $pdo->beginTransaction();
     try {
         $st = $pdo->prepare(
@@ -449,14 +430,21 @@ function eliminar(PDO $pdo, int $idCompra): array
         $stDetJson->execute([$idCompra]);
         $detalleFilas = $stDetJson->fetchAll();
 
-        if ($row['estado'] === 'recibida') {
-            $stD = $pdo->prepare('SELECT idProducto, cantidad FROM DetalleCompra WHERE idCompra = ?');
-            $stD->execute([$idCompra]);
-            $lineas = $stD->fetchAll();
-            $map = sumarCantidadesPorProducto($lineas);
-            if ($map !== []) {
-                registrarSalidasInventarioCompraForzado($pdo, $map);
+        $stD = $pdo->prepare('SELECT idProducto, cantidad FROM DetalleCompra WHERE idCompra = ?');
+        $stD->execute([$idCompra]);
+        $lineas = $stD->fetchAll();
+        $map = sumarCantidadesPorProducto($lineas);
+        if ($map !== [] && (string) $row['estado'] === 'recibida') {
+            $stStock = $pdo->prepare('SELECT COALESCE(SUM(entrada - salida), 0) FROM Inventario WHERE idProducto = ?');
+            foreach ($map as $pid => $q) {
+                $stStock->execute([(int) $pid]);
+                $stockActual = (int) $stStock->fetchColumn();
+                if ($stockActual < (int) $q) {
+                    $pdo->rollBack();
+                    return ['ok' => false, 'error' => "No se puede eliminar: el producto ID {$pid} tiene {$stockActual} unidades disponibles pero la compra aportó {$q}. Eliminar dejaría el inventario en negativo."];
+                }
             }
+            registrarSalidasInventarioCompraForzado($pdo, $map);
         }
 
         $total = (float) ($row['total'] ?? 0);
@@ -470,7 +458,7 @@ function eliminar(PDO $pdo, int $idCompra): array
             isset($row['fecha']) ? (string) $row['fecha'] : null,
             $idImp,
             (string) ($row['nombreImportador'] ?? ''),
-            (string) $row['estado'],
+            'recibida',
             $total,
             $detalleFilas
         );
@@ -492,106 +480,56 @@ function eliminar(PDO $pdo, int $idCompra): array
     }
 }
 
-function recibir(PDO $pdo, int $idCompra): array
-{
-    $pdo->beginTransaction();
-    try {
-        $st = $pdo->prepare('SELECT estado FROM Compra WHERE idCompra = ? FOR UPDATE');
-        $st->execute([$idCompra]);
-        $row = $st->fetch();
-        if (!$row) {
-            $pdo->rollBack();
-            return ['ok' => false, 'error' => 'Compra no encontrada'];
-        }
-        if ($row['estado'] === 'recibida') {
-            $pdo->rollBack();
-            return ['ok' => false, 'error' => 'La compra ya está recibida.'];
-        }
-
-        $stD = $pdo->prepare('SELECT idProducto, cantidad FROM DetalleCompra WHERE idCompra = ?');
-        $stD->execute([$idCompra]);
-        $lineas = $stD->fetchAll();
-
-        $insInv = $pdo->prepare(
-            'INSERT INTO Inventario (fechaActualizacion, cantidad, idProducto, entrada, salida)
-             VALUES (CURDATE(), ?, ?, ?, 0)'
-        );
-
-        foreach ($lineas as $ln) {
-            $pid = (int) $ln['idProducto'];
-            $cant = (int) $ln['cantidad'];
-            $insInv->execute([$cant, $pid, $cant]);
-        }
-
-        $upC = $pdo->prepare('UPDATE Compra SET estado = \'recibida\' WHERE idCompra = ?');
-        $upC->execute([$idCompra]);
-
-        $pdo->commit();
-        return ['ok' => true, 'idCompra' => $idCompra];
-    } catch (Throwable $e) {
-        $pdo->rollBack();
-        return ['ok' => false, 'error' => $e->getMessage()];
-    }
-}
-
 // ——— Enrutado ———
-try {
-    $pdo = lb_get_pdo();
-} catch (Throwable $e) {
-    json_out(['ok' => false, 'error' => 'Error de conexión a la base de datos: ' . $e->getMessage()], 500);
-}
+$pdo = lb_pdo();
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-if ($method === 'GET') {
-    if (isset($_GET['catalog']) && $_GET['catalog'] === '1') {
-        json_out(catalogo($pdo));
-    }
-    if (isset($_GET['id'])) {
-        $id = (int) $_GET['id'];
-        if ($id <= 0) {
-            json_out(['ok' => false, 'error' => 'ID inválido'], 400);
+try {
+    if ($method === 'GET') {
+        if (isset($_GET['catalog']) && $_GET['catalog'] === '1') {
+            json_out(catalogo($pdo));
         }
-        json_out(detalle($pdo, $id));
+        if (isset($_GET['id'])) {
+            $id = (int) $_GET['id'];
+            if ($id <= 0) {
+                json_out(['ok' => false, 'error' => 'ID inválido'], 400);
+            }
+            json_out(detalle($pdo, $id));
+        }
+        $impFiltro = isset($_GET['proveedor']) ? (int) $_GET['proveedor'] : 0;
+        $busqueda = isset($_GET['q']) ? trim((string) $_GET['q']) : '';
+        json_out(listar($pdo, $impFiltro > 0 ? $impFiltro : null, $busqueda !== '' ? $busqueda : null));
     }
-    $impFiltro = isset($_GET['proveedor']) ? (int) $_GET['proveedor'] : 0;
-    $busqueda = isset($_GET['q']) ? trim((string) $_GET['q']) : '';
-    json_out(listar($pdo, $impFiltro > 0 ? $impFiltro : null, $busqueda !== '' ? $busqueda : null));
+
+    if ($method === 'POST') {
+        $action = $_GET['action'] ?? 'create';
+        $raw = file_get_contents('php://input');
+        $input = $raw !== '' ? json_decode($raw, true) : [];
+        if (!is_array($input)) {
+            $input = [];
+        }
+
+        if ($action === 'delete') {
+            $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+            if ($id <= 0) {
+                json_out(['ok' => false, 'error' => 'ID requerido'], 400);
+            }
+            json_out(eliminar($pdo, $id));
+        }
+
+        if ($action === 'update') {
+            $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+            if ($id <= 0) {
+                json_out(['ok' => false, 'error' => 'ID requerido'], 400);
+            }
+            json_out(actualizar($pdo, $id, $input));
+        }
+
+        json_out(crear($pdo, $input));
+    }
+
+    json_out(['ok' => false, 'error' => 'Método no permitido'], 405);
+} catch (Throwable $e) {
+    lb_json_sql_error($e, 'Error en compras:');
 }
-
-if ($method === 'POST') {
-    $action = $_GET['action'] ?? 'create';
-    $raw = file_get_contents('php://input');
-    $input = $raw !== '' ? json_decode($raw, true) : [];
-    if (!is_array($input)) {
-        $input = [];
-    }
-
-    if ($action === 'recibir') {
-        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
-        if ($id <= 0) {
-            json_out(['ok' => false, 'error' => 'ID requerido'], 400);
-        }
-        json_out(recibir($pdo, $id));
-    }
-
-    if ($action === 'delete') {
-        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
-        if ($id <= 0) {
-            json_out(['ok' => false, 'error' => 'ID requerido'], 400);
-        }
-        json_out(eliminar($pdo, $id));
-    }
-
-    if ($action === 'update') {
-        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
-        if ($id <= 0) {
-            json_out(['ok' => false, 'error' => 'ID requerido'], 400);
-        }
-        json_out(actualizar($pdo, $id, $input));
-    }
-
-    json_out(crear($pdo, $input));
-}
-
-json_out(['ok' => false, 'error' => 'Método no permitido'], 405);

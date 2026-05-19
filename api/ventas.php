@@ -12,6 +12,11 @@
  */
 declare(strict_types=1);
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'httponly' => true, 'samesite' => 'Strict']);
+    session_start();
+}
+
 require_once __DIR__ . '/lib.php';
 
 function json_out(array $data, int $code = 200): void
@@ -92,9 +97,14 @@ function detalleLineas(PDO $pdo, int $idVenta): array
 function una(PDO $pdo, int $id): array
 {
     $st = $pdo->prepare(
-        'SELECT v.id_venta, v.fecha, v.total, v.id_tipo_pago, tp.nombre AS nombre_tipo_pago
+        'SELECT v.id_venta, v.fecha, v.total, v.id_tipo_pago, tp.nombre AS nombre_tipo_pago,
+                v.creado_por, uc.nombre AS creado_por_nombre,
+                v.modificado_por, um.nombre AS modificado_por_nombre,
+                v.modificado_en
          FROM ventas v
          INNER JOIN tipo_pago tp ON tp.id_tipo_pago = v.id_tipo_pago
+         LEFT JOIN lb_usuario uc ON uc.id = v.creado_por
+         LEFT JOIN lb_usuario um ON um.id = v.modificado_por
          WHERE v.id_venta = ?'
     );
     $st->execute([$id]);
@@ -311,12 +321,13 @@ function crear(PDO $pdo, array $in): array
             $pdo->rollBack();
             return ['ok' => false, 'error' => $invErr];
         }
+        $uid = isset($_SESSION['lb_uid']) ? (int) $_SESSION['lb_uid'] : null;
         if (!empty($in['fecha'])) {
-            $st = $pdo->prepare('INSERT INTO ventas (fecha, total, id_tipo_pago) VALUES (?, ?, ?)');
-            $st->execute([(string) $in['fecha'], $total, $idTipo]);
+            $st = $pdo->prepare('INSERT INTO ventas (fecha, total, id_tipo_pago, creado_por) VALUES (?, ?, ?, ?)');
+            $st->execute([(string) $in['fecha'], $total, $idTipo, $uid]);
         } else {
-            $st = $pdo->prepare('INSERT INTO ventas (total, id_tipo_pago) VALUES (?, ?)');
-            $st->execute([$total, $idTipo]);
+            $st = $pdo->prepare('INSERT INTO ventas (total, id_tipo_pago, creado_por) VALUES (?, ?, ?)');
+            $st->execute([$total, $idTipo, $uid]);
         }
         $idVenta = (int) $pdo->lastInsertId();
         insertarLineas($pdo, $idVenta, $detalles);
@@ -375,8 +386,9 @@ function actualizar(PDO $pdo, int $id, array $in): array
             return ['ok' => false, 'error' => $invErr];
         }
         $pdo->prepare('DELETE FROM detalle_venta WHERE id_venta = ?')->execute([$id]);
-        $up = $pdo->prepare('UPDATE ventas SET fecha = ?, total = ?, id_tipo_pago = ? WHERE id_venta = ?');
-        $up->execute([(string) $in['fecha'], $total, $idTipo, $id]);
+        $uid = isset($_SESSION['lb_uid']) ? (int) $_SESSION['lb_uid'] : null;
+        $up = $pdo->prepare('UPDATE ventas SET fecha = ?, total = ?, id_tipo_pago = ?, modificado_por = ?, modificado_en = NOW() WHERE id_venta = ?');
+        $up->execute([(string) $in['fecha'], $total, $idTipo, $uid, $id]);
         insertarLineas($pdo, $id, $detalles);
         registrarSalidasInventarioVenta($pdo, $detalles);
         $pdo->commit();
@@ -420,58 +432,58 @@ function eliminar(PDO $pdo, int $id): array
     return ['ok' => true, 'mensaje' => 'Venta eliminada.'];
 }
 
-try {
-    $pdo = lb_pdo();
-} catch (Throwable $e) {
-    json_out(['ok' => false, 'error' => 'Error de conexión a la base de datos: ' . $e->getMessage()], 500);
-}
+$pdo = lb_pdo();
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-if ($method === 'GET') {
-    if (isset($_GET['catalog']) && $_GET['catalog'] === '1') {
-        json_out(catalogo($pdo));
-    }
-    if (isset($_GET['stats']) && $_GET['stats'] === '1') {
-        json_out(estadisticas($pdo));
-    }
-    if (isset($_GET['id'])) {
-        $id = (int) $_GET['id'];
-        if ($id <= 0) {
-            json_out(['ok' => false, 'error' => 'ID inválido'], 400);
+try {
+    if ($method === 'GET') {
+        if (isset($_GET['catalog']) && $_GET['catalog'] === '1') {
+            json_out(catalogo($pdo));
         }
-        json_out(una($pdo, $id));
+        if (isset($_GET['stats']) && $_GET['stats'] === '1') {
+            json_out(estadisticas($pdo));
+        }
+        if (isset($_GET['id'])) {
+            $id = (int) $_GET['id'];
+            if ($id <= 0) {
+                json_out(['ok' => false, 'error' => 'ID inválido'], 400);
+            }
+            json_out(una($pdo, $id));
+        }
+        $qId = isset($_GET['q']) ? trim((string) $_GET['q']) : '';
+        $fecha = isset($_GET['fecha']) ? trim((string) $_GET['fecha']) : '';
+        json_out(listar($pdo, $qId, $fecha));
     }
-    $qId = isset($_GET['q']) ? trim((string) $_GET['q']) : '';
-    $fecha = isset($_GET['fecha']) ? trim((string) $_GET['fecha']) : '';
-    json_out(listar($pdo, $qId, $fecha));
+
+    if ($method === 'POST') {
+        $action = $_GET['action'] ?? 'create';
+        $raw = file_get_contents('php://input');
+        $input = $raw !== '' ? json_decode($raw, true) : [];
+        if (!is_array($input)) {
+            $input = [];
+        }
+
+        if ($action === 'delete') {
+            $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+            if ($id <= 0) {
+                json_out(['ok' => false, 'error' => 'ID requerido'], 400);
+            }
+            json_out(eliminar($pdo, $id));
+        }
+
+        if ($action === 'update') {
+            $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+            if ($id <= 0) {
+                json_out(['ok' => false, 'error' => 'ID requerido'], 400);
+            }
+            json_out(actualizar($pdo, $id, $input));
+        }
+
+        json_out(crear($pdo, $input));
+    }
+
+    json_out(['ok' => false, 'error' => 'Método no permitido'], 405);
+} catch (Throwable $e) {
+    lb_json_sql_error($e, 'Error en ventas:');
 }
-
-if ($method === 'POST') {
-    $action = $_GET['action'] ?? 'create';
-    $raw = file_get_contents('php://input');
-    $input = $raw !== '' ? json_decode($raw, true) : [];
-    if (!is_array($input)) {
-        $input = [];
-    }
-
-    if ($action === 'delete') {
-        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
-        if ($id <= 0) {
-            json_out(['ok' => false, 'error' => 'ID requerido'], 400);
-        }
-        json_out(eliminar($pdo, $id));
-    }
-
-    if ($action === 'update') {
-        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
-        if ($id <= 0) {
-            json_out(['ok' => false, 'error' => 'ID requerido'], 400);
-        }
-        json_out(actualizar($pdo, $id, $input));
-    }
-
-    json_out(crear($pdo, $input));
-}
-
-json_out(['ok' => false, 'error' => 'Método no permitido'], 405);
